@@ -1,0 +1,1114 @@
+
+// TODO - licenca e doc básicos nestas sources
+
+function canvElName(p_layername) {
+	return "_dl" + p_layername;
+}
+
+/** 
+  * Object to control HTML Canvas rendering, usually automatically created at MapController instantiation
+  * @param {string} p_elemid - The ID of HTML container object to recieve the canvases objects.
+  * @param {Object} p_mapcontroller - The RISCO MapController object 
+  * @param {number} opt_basezindex - (optional) base value for zIndex: zIndex of first canvas (raster), zIndex of secessive canvas is incremented to ensure superposition
+  * @constructor 
+*/
+function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
+	
+	this.getClassStr = function() {
+		return "CanvasController";
+	};
+	// TODO Mensagens em Ingles
+	this.i18nmsgs = {
+		"pt": {
+			"NONEW": "'CanvasController' é classe, o seu construtor foi invocado sem 'new'",
+			"NOID": "construtor de 'CanvasController' invocado sem ID do elemento canvas respectivo",
+			"NOCANVAS": "Este browser não suporta Canvas",
+			"MISSLYRNAME": "nome de layer 'canvas' não encontrado:",
+			"MISSVRTMRKFUNC": "função de marcação de véritces não definida",
+			"MISMIDPMRKFUNC": "função de marcação de pontos médios não definida"
+		}
+	};
+	this.msg = function(p_msgkey) {
+		//var langstr = navigator.language || navigator.userLanguage;
+		//var lang = langstr.splice(1,2);
+		var lang = "pt";
+		return this.i18nmsgs[lang][p_msgkey]
+	};
+	
+	if ( !(this instanceof arguments.callee) )
+		throw new Error(this.msg("NONEW"));
+
+	if (p_elemid === null) 
+		throw new Error(this.msg("NOID"));
+		
+	this._ctxdict = {
+		"raster": null,
+		"base": null,
+		"temporary": null,
+		"transient": null
+	};
+	this._ctxorder = [
+	                  "raster",
+	                  "base",
+	                  "temporary",
+	                  "transient"
+	                  ];
+	this._internalstyles = {};
+	this.defaultDisplayLayer = this._ctxorder[0];
+	this.activeDisplayLayer = this.defaultDisplayLayer;
+	this._canvasAncestorElId = p_elemid;
+	this.preppedDisplay = false;
+	this.canvasDims = [0,0];
+	this.markVertices = false;
+	this.markVertexFunc = null;
+	this.markMidpoints = false;
+	this.markMidpointFunc = null;
+	this.maxzindex = -1;
+	
+	// TODO: agarrar eventos do canvas ao refresh do mapcontroller
+	this._mapcontroller = p_mapcontroller;
+
+	var canvasDiv = document.getElementById(this._canvasAncestorElId);
+	this.canvasDims[0] = canvasDiv.clientWidth;
+	this.canvasDims[1] = canvasDiv.clientHeight;
+	canvasDiv.style.position = 'relative'; 
+	
+	var li, bzi, ctx, canvasel, displayer, cnvname;
+	
+	if (opt_basezindex) {
+		bzi = parseInteger(opt_basezindex);
+	} else {
+		bzi = 1;
+	}
+	
+	for (li=0; li<this._ctxorder.length; li++) 
+	{
+		displayer = this._ctxorder[li];
+		cnvname = canvElName(displayer);
+		
+		canvasel = document.createElement('canvas');
+		canvasel.setAttribute('style', 'position:absolute;top:0;left:0;z-index:'+(li+bzi));
+		canvasel.setAttribute('id', cnvname);
+		canvasel.setAttribute('width', this.canvasDims[0]);
+		canvasel.setAttribute('height', this.canvasDims[1]);
+		
+		this.maxzindex = li+bzi;
+		
+		canvasDiv.appendChild(canvasel);
+		
+		this._ctxdict[displayer] = canvasel.getContext("2d");
+	    if (!this._ctxdict[displayer]) {
+	    	throw new Error(this.msg("NOCANVAS")+": "+displayer);
+	    }
+	    
+	    // Transient layer style
+	    if (displayer == "transient") {
+	    	this._ctxdict[displayer].strokeStyle = '#f00'; 
+	    	this._ctxdict[displayer].fillStyle = 'rgba(0, 229, 130, 0.5)'; 
+	    }
+	}
+	this.topcanvasel = canvasel;
+
+	this.getTopCanvasElement = function() {
+	    return this.topcanvasel;		
+	};
+	this.getDefaultDisplayLayer = function() {
+	    return this.defaultDisplayLayer;		
+	};
+	this.setActiveDisplayLayer = function(p_displayer) {
+		if (this._ctxdict[p_displayer] === undefined) {
+			throw new Error(this.msg("MISSLYRNAME")+" "+p_displayer);
+		}
+	    this.activeDisplayLayer = p_displayer;		
+	};
+
+	
+	this.getCtx = function(p_displayer) {		
+		var layer;
+		if (!p_displayer) {
+			layer = "base";
+		} else {
+			layer = p_displayer;			
+		}
+	    return this._ctxdict[layer];		
+	};
+
+	this.saveCtx = function(p_displayer) {		
+		var layer;
+		if (!p_displayer) {
+			layer = "base";
+		} else {
+			layer = p_displayer;			
+		}
+	    this._ctxdict[layer].save();		
+	};
+
+	this.restoreCtx = function(p_displayer) {		
+		var layer;
+		if (!p_displayer) {
+			layer = "base";
+		} else {
+			layer = p_displayer;			
+		}
+	    this._ctxdict[layer].restore();		
+	};
+	
+	this.prepDisplay = function(opt_force)
+	{
+	    var li, displayer, failed = false;
+		if (opt_force!=null || !this.preppedDisplay) {
+			for (li=0; li<this._ctxorder.length; li++) 
+	    	{
+	    		displayer = this._ctxorder[li];
+	    		canvasel = document.getElementById(canvElName(displayer));
+	    		if (!this.resizeCanvasToDisplaySize(canvasel)) {
+			    	failed = true;
+			    	break;
+			    }
+	    	}
+	    }
+		
+		if (!failed) {
+			this.preppedDisplay = true;
+		}
+	};
+	this.clearDisplay = function(opt_background)
+	{
+		var displayer;
+		for (var li=0; li<this._ctxorder.length; li++) 
+    	{
+    		displayer = this._ctxorder[li];
+    		if (li==0) {
+				this.clearDisplayLayer(displayer, opt_background);
+			} else {
+				this.clearDisplayLayer(displayer);
+			}
+    	}
+	};
+
+	this.clearDisplayLayer = function(p_layername, opt_background)
+	{
+		this._ctxdict[p_layername].clearRect(0, 0, this.canvasDims[0], this.canvasDims[1]);
+		
+		/*console.log("     clearing "+p_layername);
+		console.trace();*/
+		
+		if (opt_background) {
+			this._ctxdict[p_layername].save();
+			this._ctxdict[p_layername].fillStyle = opt_background;
+			this._ctxdict[p_layername].fillRect(0, 0, this.canvasDims[0], this.canvasDims[1]);
+			this._ctxdict[p_layername].restore();
+		}
+	};
+	
+	this.getCanvasDims = function() {
+	    return this.canvasDims;
+	};	
+	
+	// TODO: FALTA DOC
+	this.interpretStyleChgObj = function(p_stylechgobj, opt_displaylayer) {
+		
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		// stroke
+		if (p_stylechgobj['stroke'] !== undefined && p_stylechgobj['stroke'] != null) 
+		{
+			if (p_stylechgobj['stroke']['linewidth'] !== undefined) {				
+				this._ctxdict[dlayer].lineWidth = p_stylechgobj['stroke']['linewidth'];				
+			}		
+		}
+	}
+	
+	// TODO: USAR opt_displaylayer
+	this.getStrokeStyle = function(opt_displaylayer) 
+	{
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		if (this._ctxdict[dlayer] === undefined) {
+			console.log("missing "+dlayer+' opt:'+opt_displaylayer);
+			throw new Error('getStrokeStyle: missing layer');
+		}
+		return this._ctxdict[dlayer].strokeStyle;
+	};
+	this.getFillStyle = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].fillStyle;
+	};	
+	this.getLineWidth = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].lineWidth;
+	};	
+	this.getFont = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].font;
+	};	
+	this.getTextAlign = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].textAlign;
+	};
+	this.getBaseline = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].textBaseline;
+	};
+	this.setStrokeStyle = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].strokeStyle = p_style;
+	};
+	this.setFillStyle = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].fillStyle = p_style;
+	};
+	this.setLineWidth = function(p_val, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].lineWidth = p_val;
+	};
+	this.setLineJoin = function(p_val, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].lineJoin = p_val;
+	};
+	this.setLineCap = function(p_val, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].lineCap = p_val;
+	};
+	this.setFont = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		if (navigator.appVersion.indexOf("MSIE")!=-1) {
+			this._ctxdict[dlayer].font = parseInt(p_style) + "px Helvetica";
+		} else {
+			this._ctxdict[dlayer].font = p_style;
+		}
+		
+	};
+	this.setTextAlign = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].textAlign = p_style;
+	};
+	this.setBaseline = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].textBaseline = p_style;
+	};
+	this.getFontSize = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return parseInt(this._ctxdict[dlayer].font);
+	};
+
+	this.setShadowColor = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].shadowColor = p_style;
+	};
+	this.getShadowColor = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].shadowColor;
+	};
+	this.setShadowOffsetX = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].shadowOffsetX = p_style;
+	};
+	this.getShadowOffsetX = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return parseInt(this._ctxdict[dlayer].shadowOffsetX);
+	};
+
+	this.setShadowOffsetY = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].shadowOffsetY = p_style;
+	};
+	this.getShadowOffsetY = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return parseInt(this._ctxdict[dlayer].shadowOffsetY);
+	};
+
+	this.setShadowBlur = function(p_style, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].shadowBlur = p_style;
+	};
+	this.getShadowBlur = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return parseInt(this._ctxdict[dlayer].shadowBlur);
+	};
+
+	this.setLabelBackground = function(p_style) {
+		this._internalstyles.label_background = p_style;
+	};
+	this.getLabelBackground = function() {
+		return this._internalstyles.label_background;
+	};
+
+	this.setMarker = function(p_style) {
+		this._internalstyles.marker = p_style.toLowerCase();
+	};
+	this.getMarker = function() {
+		if (this._internalstyles.marker === undefined) {
+			return "square";
+		} else {
+			return this._internalstyles.marker;
+		}
+	};
+	this.setMarkerSize = function(p_style) {
+		this._internalstyles.markersize = p_style;
+	};
+	this.getMarkerSize = function() {
+		if (this._internalstyles.markersize === undefined) {
+			return 1;
+		} else {
+			return this._internalstyles.markersize;
+		}
+	};
+	
+	this.measureTextWidth = function(p_txt, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].measureText(p_txt).width;	
+	};
+
+	this.plainText = function (p_txt, p_pt, opt_displaylayer, opt_p_chheight, 
+					opt_p_chhwid, opt_p_isfirst, opt_p_islast) 
+	{
+		var dlayer, ctx;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		ctx = this._ctxdict[dlayer];
+
+		if (this.getLabelBackground() !== undefined) 
+		{
+			ctx.save();
+			ctx.fillStyle = this.getLabelBackground();
+			if (opt_p_isfirst) {
+				ctx.fillRect(-opt_p_chhwid-4, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
+			} else if (opt_p_islast) {
+				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
+			} else {
+				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), opt_p_chhwid*2, opt_p_chheight);
+			}
+			ctx.restore();
+		}
+
+		ctx.fillText(p_txt, p_pt[0], p_pt[1]);
+	};	
+	
+	this.rotatedText = function (p_txt, p_pt, p_angle, opt_displaylayer, 
+							opt_p_chheight, opt_p_chhwid, opt_p_isfirst, opt_p_islast) 
+	{
+		var dlayer, ctx;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+
+		ctx = this._ctxdict[dlayer];
+
+		ctx.save();
+		ctx.translate(p_pt[0], p_pt[1]);
+		ctx.rotate(p_angle);
+
+		if (this.getLabelBackground() !== undefined) 
+		{
+			ctx.save();
+			ctx.fillStyle = this.getLabelBackground();
+			if (opt_p_isfirst) {
+				ctx.fillRect(-opt_p_chhwid-4, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
+			} else if (opt_p_islast) {
+				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
+			} else {
+				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), opt_p_chhwid*2, opt_p_chheight);
+			}
+			ctx.restore();
+		}
+
+		ctx.fillText(p_txt, 0, 0);
+		ctx.restore();
+	};	
+	
+	
+	// TODO: FAZER DOC
+	// Function drawSimplePath -- draw simple path in canvas
+	// Input parameters:
+	// 	 p_points: consecutive coordinate values, unpaired, in map units or screen space;in this latter case,
+	//	 	is_inscreenspace should be 'true'
+	//   p_stroke: boolean flag - do stroke
+	//   p_fill: boolean flag - do fill 
+	// 	 is_inscreenspace: object defined in screen space coordinates
+	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
+	// 	 dolog: boolean flag -- log messages to console
+	//	 do_forcemx - force the use of transformation matrix
+											
+	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
+					is_inscreenspace, opt_displaylayer, dolog, do_forcemx) 
+	{
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		if (p_points.length < 1) {
+			return;
+		}
+		if (p_points.length % 2 != 0) {
+			throw new Error("Internal error: odd coordinate number in drawSimplePath:"+p_points.length);
+		}
+		this._ctxdict[dlayer].beginPath();
+		var prevmidpt=[0,0], midpt=[0,0], prevpt=[0,0], pt=[];
+
+		for (var cpi=0; cpi<p_points.length; cpi+=2) 
+		{
+			pt.length = 2;
+			
+			if (is_inscreenspace) {
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[cpi], p_points[cpi+1], pt);
+			} else {
+				this._mapcontroller.getScreenPtFromTerrain(p_points[cpi], p_points[cpi+1], pt, do_forcemx);
+			}
+
+			if (this.markVertices) {
+				this.markVertexFunc(pt[0], pt[1]);
+			}
+			if (this.markMidpoints) {
+				if (cpi > 0)
+				 {
+					midpt=[ 
+					        prevpt[0] + ((pt[0]-prevpt[0])/2.0), 
+					        prevpt[1] + ((pt[1]-prevpt[1])/2.0)
+					        ], 
+					this.markMidpointFunc( midpt[0], midpt[1] );
+					if (cpi > 1) {
+						this._ctxdict['transient'].moveTo(prevmidpt[0], prevmidpt[1]);
+						this._ctxdict['transient'].quadraticCurveTo(prevpt[0], prevpt[1], midpt[0], midpt[1]);
+						this._ctxdict['transient'].stroke();
+					}
+					prevmidpt[0] = midpt[0];
+					prevmidpt[1] = midpt[1];
+				}
+				prevpt[0] = pt[0];
+				prevpt[1] = pt[1];
+			}
+			
+			if (cpi==0) {
+				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			} else {
+				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			}
+			
+			if (dolog) {
+				console.log("draw simple path on '"+dlayer+"', input:"+p_points[cpi]+","+p_points[cpi+1]+', screen:'+JSON.stringify(pt));
+			}
+		}
+		if (p_stroke) {
+			this._ctxdict[dlayer].stroke();
+			if (dolog) {
+				console.log(dlayer+" stroking");
+			}
+		} 
+		if (p_fill) {
+			this._ctxdict[dlayer].fill();
+			if (dolog) {
+				console.log(dlayer+" filling");
+			}
+		}
+	};
+
+
+	// Function drawMultiplePath -- draw multiple path in canvas
+	// Input parameters:
+	// 	 p_parts_of_points: lists of consecutive coordinate values, unpaired
+	//   p_stroke: boolean flag - do stroke
+	//   p_fill: boolean flag - do fill 
+	// 	 is_inscreenspace: object defined in screen space coordinates
+	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
+	// 	 dolog: boolean flag -- log messages to console
+	//	 do_forcemx - force the use of transformation matrix
+
+	this.drawMultiplePath = function(p_parts_of_points, p_stroke, p_fill, 
+			is_inscreenspace, opt_displaylayer, dolog, do_forcemx) 
+	{
+		if (dolog) {
+			console.log('---- p_parts_of_points -----');
+			console.log(JSON.stringify(p_parts_of_points));
+			console.log('--------------------------------');
+		}
+
+		if (p_parts_of_points.length < 1) {
+			return;
+		}
+
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+
+		this._ctxdict[dlayer].beginPath();
+		var pt=[], points;
+
+		for (var pidx=0; pidx<p_parts_of_points.length; pidx++)
+		{
+			points = p_parts_of_points[pidx];
+			for (var cpi=0; cpi<points.length; cpi+=2) 
+			{
+				pt.length = 2;
+
+				if (is_inscreenspace) {
+					this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt);
+				} else {
+					this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt, do_forcemx);
+				}
+
+				if (cpi==0) {
+					this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				} else {
+					this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+				}
+				if (dolog) {
+					console.log("draw multiple path, input:"+points[cpi]+','+points[cpi+1]+', screen:'+pt);
+				}
+			}
+		}
+		if (p_stroke) {
+			this._ctxdict[dlayer].stroke();
+			if (dolog) {
+				console.log("stroking");
+			}
+		} 
+		if (p_fill) {
+			this._ctxdict[dlayer].fill('evenodd');
+			if (dolog) {
+				console.log("filling");
+			}
+		}
+	};
+	
+	// Function drawMultiplePathCollection -- draw collection of multiple paths in canvas
+	// Input parameters:
+	// 	 p_parts_of_points: lists of consecutive coordinate values, unpaired
+	//   p_stroke: boolean flag - do stroke
+	//   p_fill: boolean flag - do fill 
+	// 	 is_inscreenspace: object defined in screen space coordinates
+	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
+	// 	 dolog: boolean flag -- log messages to console
+	//   opt_mapctrlr: optional mapcontroller, to gain access to screen transformation parameters: if null,
+	//     p_points coordinates are supposed to be in screen units
+	//	 do_forcemx - force the use of transformation matrix
+											
+	this.drawMultiplePathCollection = function(p_part_collection, p_stroke, p_fill, 
+			is_inscreenspace, opt_displaylayer, dolog, opt_mapctrlr, do_forcemx) 
+	{
+		
+		if (p_part_collection.length < 1) {
+			return;
+		}
+
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].beginPath();
+		var pt=[], parts_of_points, points;
+
+		for (var pcidx=0; pcidx<p_part_collection.length; pcidx++)
+		{
+			parts_of_points = p_part_collection[pcidx];
+			for (var pidx=0; pidx<parts_of_points.length; pidx++)
+			{
+				points = parts_of_points[pidx];
+				for (var cpi=0; cpi<points.length; cpi+=2) 
+				{
+					pt.length = 2;
+
+					if (is_inscreenspace) {
+						this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt);
+					} else {
+						this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt, do_forcemx);
+					}
+					
+					if (cpi==0) {
+						this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+					} else {
+						this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+					}
+					if (dolog) {
+						console.log("draw multiple path coll, input:"+points[cpi]+','+points[cpi+1]+', screen:'+pt);
+					}
+				}
+			}
+		}
+		if (p_stroke) {
+			this._ctxdict[dlayer].stroke();
+			if (dolog) {
+				console.log("stroking");
+			}
+		} 
+		if (p_fill) {
+			this._ctxdict[dlayer].fill('evenodd');
+			if (dolog) {
+				console.log("filling");
+			}
+		}
+	};
+	
+	this.drawCenteredRect = function(p_cx, p_cy, p_width, p_height, 
+			p_stroke, p_fill, 
+			is_inscreenspace, 
+			opt_displaylayer, do_forcemx) {
+				
+		var dlayer, pt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+
+		pt.length = 2;
+
+		if (is_inscreenspace) {
+			this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
+		} else {
+			this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt, do_forcemx);
+		}
+		
+		if (p_stroke) {
+			this._ctxdict[dlayer].strokeRect(pt[0]-(p_width/2.0), pt[1]-(p_height/2.0), p_width, p_height);
+		}
+		if (p_fill) {
+			this._ctxdict[dlayer].fillRect(pt[0]-(p_width/2.0), pt[1]-(p_height/2.0), p_width, p_height);
+		}
+	}
+	
+	this.drawCrossHairs = function(p_x, p_y, p_stroke, p_fill, 
+			is_inscreenspace, 
+			opt_displaylayer, do_forcemx) 
+	{
+		var dlayer, pt=[], cpt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		pt.length = 2;
+		cpt.length = 2;
+		var sz = this.getMarkerSize();
+
+		if (p_x!=null && p_y!=null) 
+		{
+			if (is_inscreenspace) {
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+			} else {
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+			}
+		
+			// vertical
+			this._ctxdict[dlayer].beginPath();
+			pt = [cpt[0], cpt[1] - sz];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			pt = [cpt[0], cpt[1] + sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			this._ctxdict[dlayer].stroke();
+			
+			// horizontal
+			this._ctxdict[dlayer].beginPath();
+			pt = [cpt[0] - sz, cpt[1]];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			pt = [cpt[0] + sz, cpt[1]];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+			}
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+			}
+			
+		}
+	};
+
+	this.drawDiamond = function(p_x, p_y, p_stroke, p_fill, 
+			is_inscreenspace,
+			opt_displaylayer, do_forcemx) 
+	{
+		var dlayer, pt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+
+		pt.length = 2;
+		var sz = this.getMarkerSize();
+		
+		if (p_x!=null && p_y!=null) 
+		{
+			if (is_inscreenspace) {
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+			} else {
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+			}
+
+			this._ctxdict[dlayer].beginPath();
+			pt = [cpt[0] - sz, cpt[1]];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			pt = [cpt[0], cpt[1] - sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] + sz, cpt[1]];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0], cpt[1] + sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] - sz, cpt[1]];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+			}
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+			}
+		}
+	};
+
+	this.drawSquare = function(p_x, p_y, p_stroke, p_fill, 
+		is_inscreenspace,
+		opt_displaylayer, do_forcemx) 
+	{
+		var pt, sz;
+
+		var dlayer, pt=[], cpt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		pt.length = 2;
+		cpt.length = 2;
+		var sz = this.getMarkerSize();
+		
+		if (p_x!=null && p_y!=null) 
+		{
+			if (is_inscreenspace) {
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+			} else {
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+			}
+
+			// vertical
+			this._ctxdict[dlayer].beginPath();
+			pt = [cpt[0] - sz, cpt[1] - sz];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			pt = [cpt[0] + sz, cpt[1] - sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] + sz, cpt[1] + sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] - sz, cpt[1] + sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] - sz, cpt[1] - sz];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+			}
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+			}
+		}
+	};
+
+	this.drawCircle = function(p_cx, p_cy, p_radius, p_stroke, p_fill, 
+		is_inscreenspace, opt_displaylayer, do_forcemx) 
+	{
+		var dlayer, rad, pt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		pt.length = 2;
+		if (p_cx!=null && p_cy!=null && p_radius!=null) 
+		{
+			if (is_inscreenspace) {
+				rad = p_radius;
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
+			} else {
+				rad = this._mapcontroller.m * p_radius;
+				this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt, do_forcemx);
+			}
+			
+			this._ctxdict[dlayer].beginPath();
+			this._ctxdict[dlayer].arc(pt[0], pt[1], rad, 0, 2*Math.PI);
+
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+			}
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+			}
+		}
+	};
+
+	this.drawRect = function(p_llx, p_lly, p_width, p_height, p_stroke, p_fill, 
+		is_inscreenspace,
+		opt_displaylayer, do_forcemx) 
+	{
+		var pt, sz;
+
+		var dlayer, pt=[], cpt=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		
+		pt.length = 2;
+		cpt.length = 2;
+
+		if (p_llx!=null && p_lly!=null) 
+		{
+			if (is_inscreenspace) {
+				cpt[0] = p_llx;
+				cpt[1] = p_lly; 
+			} else {
+				this._mapcontroller.getScreenPtFromTerrain(p_llx, p_lly, cpt, do_forcemx);
+			}
+
+			// vertical
+			this._ctxdict[dlayer].beginPath();
+			pt = [cpt[0], cpt[1]];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+			pt = [cpt[0] + p_width, cpt[1]];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0] + p_width, cpt[1] + p_height];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0], cpt[1] + p_height];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+			pt = [cpt[0], cpt[1]];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+			}
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+			}
+		}
+	};
+	
+	this.drawImage = function(p_imageobj, p_terrx, p_terry, 
+			p_width, p_height, opt_displaylayer) {
+
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = "raster"
+		}
+		
+		var pt = [];
+		this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
+		
+		var ctxw = p_width * this._mapcontroller.getScreenScalingFactor();
+		var ctxh = p_height * this._mapcontroller.getScreenScalingFactor();
+
+		//if (tmpx) {
+			//console.log("drawImage "+p_terrx+", "+p_terry+"->"+pt[0]+","+pt[1]+" szs:"+p_width+", "+p_height+"  szs2:"+ctxw+", "+ctxh+" img:"+iname+" layer:"+dlayer);
+		//}
+				
+		try {
+			this._ctxdict[dlayer].drawImage(p_imageobj, pt[0], pt[1], ctxw, ctxh);		
+		} catch(e) {
+			var accepted = false
+			if (e.name !== undefined) {
+				if (["NS_ERROR_NOT_AVAILABLE"].indexOf(e.name) >= 0) {
+					accepted = true;
+				}
+			}
+			if (!accepted) {
+				console.log("... drawImage ERROR ...");
+				console.log(p_imageobj);
+				console.log(e);
+			}
+				
+		}
+	};
+	
+	this.setMarkVertexFunc = function(p_func) {
+		this.markVertexFunc = p_func;
+	};
+	this.setMarkVertices = function(p_flag) {
+		if (p_flag && this.markVertexFunc==null) {
+			throw new Error(this.msg("MISSVRTMRKFUNC"));
+		}
+		this.markVertices = p_flag;
+	};
+	this.setMarkMidpointFunc = function(p_func) {
+		this.markMidpointFunc = p_func;
+	};
+	this.setMarkMidpoints = function(p_flag) {
+		if (p_flag && this.markMidpointFunc==null) {
+			throw new Error(this.msg("MISMIDPMRKFUNC"));
+		}
+		this.markMidpoints = p_flag;
+	};
+	this.resizeCanvasToDisplaySize = function(p_canvas) 
+	{
+			if (typeof p_canvas != 'object') {
+				throw new Error("** resizeCanvasToDisplaySize: canvas element not defined or invalid.");
+			} 
+			var width  = p_canvas.clientWidth | 0;
+			var height = p_canvas.clientHeight | 0;
+			if (p_canvas.width !== width ||  p_canvas.height !== height) {
+				p_canvas.width  = width;
+				p_canvas.height = height;
+				this.canvasDims[0] = width;
+				this.canvasDims[1] = height;
+				//console.log("A canvas w:"+p_canvas.width+" h:"+p_canvas.height);
+				return true;		
+			} else {
+				var parElem = p_canvas.parentNode;
+				if (parElem) {
+					width  = parElem.clientWidth | 0;
+					height = parElem.clientHeight | 0;
+					if (p_canvas.width !== width ||  p_canvas.height !== height) {
+						p_canvas.width  = width;
+						p_canvas.height = height;
+						this.canvasDims[0] = width;
+						this.canvasDims[1] = height;
+						//console.log("B canvas w:"+p_canvas.width+" h:"+p_canvas.height);
+						return true;		
+					}
+				}
+			}
+			//console.log("C canvas w:"+p_canvas.width+" h:"+p_canvas.height);
+			
+			return false;
+	};
+}
