@@ -397,7 +397,7 @@ function RetrievalController() {
 	this.getRasterCount = function() {
 		return this._ordrasterlayernames.length;
 	};
-	this.getRasterNames = function(p_retlist) 
+	this.getRasterNames = function(p_retlist, opt_tolower) 
 	{
 		if (this.dolog) {
 			console.trace("getRasterNames");
@@ -406,7 +406,11 @@ function RetrievalController() {
 		var grn_i=0;
 		while (this._ordrasterlayernames[grn_i] !== undefined && this._ordrasterlayernames[grn_i] != null) 
 		{
-			p_retlist.push(this._ordrasterlayernames[grn_i]);
+			if (opt_tolower) {
+				p_retlist.push(this._ordrasterlayernames[grn_i].toLowerCase());
+			} else {
+				p_retlist.push(this._ordrasterlayernames[grn_i]);
+			}
 			grn_i++;
 			if (grn_i > MapCtrlConst.MAXLAYERCOUNT) {
 				throw new Error("excess layer name cycling");
@@ -669,3 +673,130 @@ function maxScaleView(p_scale, p_center) {
 function emptyImageURL() {
 	return '';
 }
+
+function legendData() {
+	
+	this.orderedkeys = [];
+	this.data = {};
+	this.widget_id = null;
+	
+	this.setWidgetId = function(p_widget_id) {
+		this.widget_id = p_widget_id;
+	};	
+	this.clear = function() {
+		this.orderedkeys.length = 0;
+		this.data = {};
+	};
+	this.doset = function(p_layername, p_layertitle, p_style_obj) {
+		let key;
+		if (p_style_obj['labelkey'] === undefined) {
+			return;
+		}
+		key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
+		if (this.orderedkeys.indexOf(key) < 0) {
+			this.orderedkeys.push(key);
+		}
+		this.data[key] = {
+			"lname": p_layername,
+			"ltitle": p_layertitle,
+			"style": clone(p_style_obj),
+			"count": 0
+		};
+	};
+	
+	this.add = function(p_layername, p_layertitle, p_style_obj) {
+		let key;
+		if (p_style_obj['labelkey'] === undefined) {
+			return;
+		}
+		key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
+		if (this.orderedkeys.indexOf(key) >= 0) {
+			this.data[key]['count'] = this.data[key]['count'] + 1;
+		} else {
+			this.orderedkeys.push(key);
+			this.data[key] = {
+				"lname": p_layername,
+				"ltitle": p_layertitle,
+				"style": clone(p_style_obj),
+				"count": 1
+			};
+		}
+	};
+	
+	this.updateLegendWidget = function(p_title_caption_key, p_i18n_function) {
+		console.log(JSON.stringify(this.data));	
+		let leg_container = null;	
+		let t, r, d, w, x, k, prevtitle=null, title, st;
+		if (this.widget_id) {
+			
+			leg_container = document.getElementById(this.widget_id);
+			if (leg_container) {
+				
+				while (leg_container.firstChild) {
+					leg_container.removeChild(leg_container.firstChild);
+				}	
+				t = document.createElement("table");
+				leg_container.appendChild(t);
+				r = document.createElement("tr");	
+				t.appendChild(r);				
+				d = document.createElement("td");	
+				r.appendChild(d);				
+				w = document.createElement("p");	
+				d.appendChild(w);
+				
+				x = document.createTextNode(p_i18n_function(p_title_caption_key));				
+				w.appendChild(x);				
+				setClass(w, "visctrl-h1");
+				
+				for (var i=0; i<this.orderedkeys.length; i++) {
+					
+					k = this.orderedkeys[i];
+					title = this.data[k]["ltitle"];
+					
+					if (prevtitle != title) {				
+						r = document.createElement("tr");	
+						t.appendChild(r);				
+						d = document.createElement("td");	
+						r.appendChild(d);	
+						
+						d.insertAdjacentHTML('afterbegin',title);
+									
+						//x = document.createTextNode(title);				
+						//d.appendChild(x);
+							
+						setClass(d, "visctrl-entry");
+					}
+					prevtitle = title;
+					
+					st = this.data[k]["style"];
+					if (st) {
+						r = document.createElement("tr");	
+						t.appendChild(r);				
+						d = document.createElement("td");	
+						r.appendChild(d);				
+						x = document.createTextNode(p_i18n_function(st["labelkey"]));
+						d.appendChild(x);	
+						setClass(d, "visctrl-subentry");
+					}
+					
+							
+				}
+											
+			}
+		}
+	};
+
+	
+	/*
+	this.getStyle = function(p_key) {
+		let key = p_key.toUpperCase();
+		return this.styles[key];
+	};
+	
+	this.getElemCount = function(p_key) {
+		let key = p_key.toUpperCase();
+		return this.elemcounter[key];
+	};
+	* */
+}
+

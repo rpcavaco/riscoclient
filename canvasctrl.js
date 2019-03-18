@@ -512,7 +512,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		ctx.fillText(p_txt, p_pt[0], p_pt[1]);
 	};	
 	
-	this.rotatedText = function (p_txt, p_pt, p_angle, opt_displaylayer, 
+	this.rotatedText = function (p_txt, p_pt, p_angle, p_fillstroke, opt_displaylayer, 
 							opt_p_chheight, opt_p_chhwid, opt_p_isfirst, opt_p_islast) 
 	{
 		var dlayer, ctx;
@@ -542,7 +542,15 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			ctx.restore();
 		}
 
-		ctx.fillText(p_txt, 0, 0);
+		if (p_fillstroke.fill) {
+			ctx.fillText(p_txt, 0, 0);
+		}
+		if (p_fillstroke.stroke) {
+			ctx.strokeText(p_txt, 0,0);
+		}
+		if (!p_fillstroke.fill && !p_fillstroke.stroke) {
+			throw new Error("rotatedText: no fill, no stroke");
+		}
 		ctx.restore();
 	};	
 	

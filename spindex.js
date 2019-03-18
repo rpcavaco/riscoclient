@@ -453,11 +453,17 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 								case "mpoly":
 								case "poly":
 									dist = geom.distanceToPoly(feat.points, feat.path_levels, p_pt);
+									if (featid==236) {
+										PT0 = p_pt;
+									PTS = feat.points;
+								}
 									break;
 									
 							}
 							
-							//console.log(String.format("d:{0}, r:{1}, min:{2}, np:{3}", dist, p_radius, out_checkobj.found_dist, feat.attrs.n_policia));
+							if (false && featid==236) {
+							console.log(String.format("d:{0}, r:{1}, min:{2}", dist, p_radius, out_checkobj.found_dist));
+						}
 							if (dist <= p_radius && dist < out_checkobj.found_dist) {
 								out_checkobj.found_dist = dist;
 								out_checkobj.found_oid = featid;

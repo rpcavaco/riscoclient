@@ -73,8 +73,8 @@ var geom = {
 	},
 
 	distance2: function(p_pt1, p_pt2) {
-		var dely = parseFloat(p_pt2[1]) - parseFloat(p_pt1[1]);
-		var delx = parseFloat(p_pt2[0]) - parseFloat(p_pt1[0]);
+		var dely = 1.0 * (parseFloat(p_pt2[1]) - parseFloat(p_pt1[1]));
+		var delx = 1.0 * (parseFloat(p_pt2[0]) - parseFloat(p_pt1[0]));
 		
 		return Math.pow(delx, 2) + Math.pow(dely, 2);
 	},
@@ -88,8 +88,8 @@ var geom = {
 			throw new Error("geom.distance - error in second point: "+p_pt2);
 		}
 		
-		var dely = parseFloat(p_pt2[1]) - parseFloat(p_pt1[1]);
-		var delx = parseFloat(p_pt2[0]) - parseFloat(p_pt1[0]);
+		var dely = 1.0 * (parseFloat(p_pt2[1]) - parseFloat(p_pt1[1]));
+		var delx = 1.0 * (parseFloat(p_pt2[0]) - parseFloat(p_pt1[0]));
 		
 		return Math.sqrt(Math.pow(delx, 2) + Math.pow(dely, 2));
 	},
@@ -113,43 +113,75 @@ var geom = {
 		return ret;
 		
 	},
-	
+	isPointOnSegment: function(p_ptseg1, p_ptseg2, p_ptin) {
+		let minval = 0.0001;		
+		return (
+			p_ptseg1[0] != p_ptseg2[0] &&
+				(p_ptseg1[0] <= p_ptin[0] && p_ptin[0] <= p_ptseg2[0] || p_ptseg2[0] <= p_ptin[0] && p_ptin[0] <= p_ptseg1[0]) ||
+			p_ptseg1[0] == p_ptseg2[0] && 
+				(p_ptseg1[1] <= p_ptin[1] && p_ptin[1] <= p_ptseg2[1] || p_ptseg2[1] <= p_ptin[1] && p_ptin[1] <= p_ptseg1[1])
+		) && Math.abs(this.area2_3p(p_ptseg1, p_ptseg2, p_ptin)) < minval;		
+	},
 	projectPointOnSegment: function(p_ptseg1, p_ptseg2, p_ptin, out_projpt) 
 	{
 		out_projpt.length = 2;
 
 		//console.log(" pos >"+p_ptseg1+" "+p_ptseg2+" "+JSON.stringify(p_ptin));
 		
-		var dx = p_ptseg2[0] * 1.0 - p_ptseg1[0] * 1.0;
-		var dy = p_ptseg2[1] * 1.0 - p_ptseg1[1] * 1.0;
-		var len2 = dx * dx + dy * dy;
-		var inprod = dx * (p_ptin[0] - p_ptseg1[0]) + dy * (p_ptin[1] - p_ptseg1[1]);
+		let d1, d2,dx = p_ptseg2[0] * 1.0 - p_ptseg1[0] * 1.0;
+		let dy = p_ptseg2[1] * 1.0 - p_ptseg1[1] * 1.0;
+		let len2 = (dx * dx) + (dy * dy);
+		let inprod = dx * (p_ptin[0] - p_ptseg1[0]) + dy * (p_ptin[1] - p_ptseg1[1]);
 		
-		//console.log(" pos dx >"+dx+", dy >"+dy);
+		//console.log("dx:"+dx+", dy:"+dy+", inprod:"+inprod+", len2:"+len2);
 		
-		out_projpt[0] = p_ptseg1[0] + inprod * dx/len2;
-		out_projpt[1] = p_ptseg1[1] + inprod * dy/len2;
+		out_projpt[0] = p_ptseg1[0] + (inprod * (dx/len2));
+		out_projpt[1] = p_ptseg1[1] + (inprod * (dy/len2));
+		
+		if (!this.isPointOnSegment(p_ptseg1, p_ptseg2, p_ptin)) {
+			d1 = this.distance2(p_ptseg1, p_ptin);
+			d2 = this.distance2(p_ptseg2, p_ptin);
+			if (d1 <= d2) {
+				out_projpt[0] = p_ptseg1[0];
+				out_projpt[1] = p_ptseg1[1];
+			} else {
+				out_projpt[0] = p_ptseg2[0];
+				out_projpt[1] = p_ptseg2[1];
+			}
+		}
+		
+		/*console.log(p_ptseg1[1]);
+		console.log(inprod);
+		console.log(inprod * (dy/len2));
 
-		//console.log(" pos >"+p_ptseg1+" "+p_ptseg2+" "+JSON.stringify(p_ptin)+" "+JSON.stringify(out_projpt));
+		console.log(" pos >"+p_ptseg1+" "+p_ptseg2+" "+JSON.stringify(p_ptin)+" out:"+JSON.stringify(out_projpt));
+		* */
 		
 	},
 	
-	projectPointOnLine: function(p_pointlst, p_ptin, out_projpt) 
+	projectPointOnLine: function(p_pointlst, p_ptin, out_projpt, opt_debug) 
 	{
 		var p1, p2, dist2, mindist=9999999, tmppt=[];
 		out_projpt.length = 2;
+		if (opt_debug) {
+			console.log("----------------------------------------");
+		}
 		for (var i=0; i<(p_pointlst.length-2); i+=2 ) {
 			p1 = [p_pointlst[i], p_pointlst[i+1]];
 			p2 = [p_pointlst[i+2], p_pointlst[i+3]];
 			this.projectPointOnSegment(p1, p2, p_ptin, tmppt);
 			dist2 = this.distance2(p_ptin, tmppt);
-			//console.log("dist2:"+dist2+" ptin:"+JSON.stringify(p_ptin)+" tmppt:"+JSON.stringify(tmppt)+" p1:"+JSON.stringify(p1)+" p2:"+JSON.stringify(p2));
+			if (opt_debug) {
+				console.log("mindist:"+mindist+", dist2:"+dist2+" ptin:"+JSON.stringify(p_ptin)+" tmppt:"+JSON.stringify(tmppt)+" p1:"+JSON.stringify(p1)+" p2:"+JSON.stringify(p2));
+			}
 			if (dist2 < mindist) {
 				mindist = dist2;
 				out_projpt[0] = tmppt[0];
 				out_projpt[1] = tmppt[1];
 			}
 		}
+		
+		return mindist;
 	},
 	
 	insidePolygon: function(p_pointlist, p_path_levels, p_ptin) 
@@ -218,12 +250,11 @@ var geom = {
 		return ret;
 	},
 	
-	distanceToLine: function(p_pointlist, p_path_levels, p_ptin) 
+	distanceToLine: function(p_pointlist, p_path_levels, p_ptin, opt_debug) 
 	{
-		var d, ret = 0, prj=[];
-		
-		switch (p_path_levels) {
+		var d, ret = 0, prj=[], prjd=0;
 			
+		switch (p_path_levels) {
 			case 1:
 				this.projectPointOnLine(p_pointlist, p_ptin, prj);
 				ret = this.distance(p_ptin, prj);
@@ -231,8 +262,11 @@ var geom = {
 			
 			case 2:
 				for (var i=0; i<p_pointlist.length; i++) {
-					this.projectPointOnLine(p_pointlist[i], p_ptin, prj);
+					prjd = this.projectPointOnLine(p_pointlist[i], p_ptin, prj, opt_debug);
 					d = this.distance(p_ptin, prj);
+					if (opt_debug) {
+						console.log("i:"+i+", pt:"+JSON.stringify(p_ptin)+", prj:"+JSON.stringify(prj)+" pd:"+prjd+" d2:"+Math.pow(d,2));
+					}
 					if (i==0) {
 						ret = d;
 					} else {
@@ -264,12 +298,16 @@ var geom = {
 		return ret;
 	},
 	
-	distanceToPoly: function(p_pointlist, p_path_levels, p_ptin) 
+	distanceToPoly: function(p_pointlist, p_path_levels, p_ptin, opt_debug) 
 	{
-		var ret = 0;
+		let ret = 0.0;
+		
+		if (false && opt_debug) {
+			console.log(JSON.stringify(p_pointlist));
+		}
 		
 		if (!this.insidePolygon(p_pointlist, p_path_levels, p_ptin) ) {
-			ret = this.distanceToLine(p_pointlist, p_path_levels, p_ptin);
+			ret = this.distanceToLine(p_pointlist, p_path_levels, p_ptin, opt_debug);
 		}
 		
 		return ret;

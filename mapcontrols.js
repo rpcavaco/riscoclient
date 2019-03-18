@@ -448,6 +448,8 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 				this.the_map.grController.saveCtx('transient');
 				this.the_map.grController.setFont('20px Arial', 'transient');
 				this.the_map.grController.setFillStyle('rgba(255,0,0,1)', 'transient');
+
+// TODO: FILLSTROKE
 				this.the_map.grController.rotatedText(this.measvalterrain+" m", retpt, ang, 'transient');
 				this.the_map.grController.restoreCtx('transient');
 					
@@ -506,6 +508,7 @@ function MapControlsMgr(p_the_map) {
 	this.activetoolctrl = null;
 	this.permanenttool = new Pan(MOUSEBTN_MIDDLE | MOUSEBTN_LEFT, this.the_map);
 	this.deftoolname = null;
+	this.legend_widget_name = null;
 	
 	this.mouseWheelCtrler = new mouseWheelController(this);
 	
@@ -535,7 +538,10 @@ function MapControlsMgr(p_the_map) {
 				})(this)
 			);
 		}
-				
+		if (p_initconfig["legend_widget_name"] !== undefined && p_initconfig["legend_widget_name"] != null) {
+			this.legend_widget_name = p_initconfig["legend_widget_name"];
+		}
+		
 		if (p_initconfig["tools"] !== undefined && p_initconfig["tools"] != null) {
 			cobj = p_initconfig["tools"];
 			cobj.forEach(

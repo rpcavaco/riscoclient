@@ -357,7 +357,7 @@ function MapLabelEngine(p_mapcontroller) {
 	};
 	
 	this.labelAlongPath = function(p_lblstr, p_lblpathcoords, p_start_length, 
-			p_char_size, opt_displaylayer) 
+			p_char_size, p_fillstroke, opt_displaylayer) 
 	{
 		var lip_lst = [], poa_lst = [], anch_pt = [], segpoints=[], pts_for_interpol=[];
 		var seglens = [], accum_seglens = null, segAndArcLengthsLst=[];
@@ -472,14 +472,16 @@ function MapLabelEngine(p_mapcontroller) {
 			shift += grCtrller.measureTextWidth(ch) / 2.0;
 			ci++;
 		}
-		
+
 		if (wrk_list.length != p_lblstr.length) {
 			return;
 		}
 		var widx = 0;
+
 		while (wrk_list[widx] !== undefined && wrk_list[widx] != null) {
+			// a aalterar rotated text -- p_fillstroke 
 			grCtrller.rotatedText(wrk_list[widx][0], wrk_list[widx][1], wrk_list[widx][2], 
-					opt_displaylayer, 
+					p_fillstroke, opt_displaylayer, 
 					wrk_list[widx][3], wrk_list[widx][4], widx==0, widx==wrk_list.length-1);
 			widx++;
 		}
@@ -508,12 +510,25 @@ function MapLabelEngine(p_mapcontroller) {
 		if (this.labelgen_profiling) {
 			t0 = Date.now();
 		}
+
+		var mapCtrller = this.mapcontroller;
+		
+		let fillStroke = {
+			"fill": false,
+			"stroke": false
+		}
 		
 		var this_styleobj = {};
 		for (var sty_attr in this.lconfig[p_layername].style) 
 		{
 			if (this.lconfig[p_layername].style.hasOwnProperty(sty_attr) && sty_attr != "scaledependent" && sty_attr != "overraster") {
 				this_styleobj[sty_attr] = this.lconfig[p_layername].style[sty_attr];
+				if (sty_attr.indexOf("fill") >= 0) {
+					fillStroke["fill"] = true;
+				}
+				if (sty_attr.indexOf("stroke") >= 0) {
+					fillStroke["stroke"] = true;
+				}
 			}
 		}
 		
@@ -537,18 +552,55 @@ function MapLabelEngine(p_mapcontroller) {
 			{
 				if (this.lconfig[p_layername].style.scaledependent[dep_rendering_scaleval].hasOwnProperty(sty_attr)) {
 					this_styleobj[sty_attr] = this.lconfig[p_layername].style.scaledependent[dep_rendering_scaleval][sty_attr];
+					if (sty_attr.indexOf("fill") >= 0) {
+						fillStroke["fill"] = true;
+					}
+					if (sty_attr.indexOf("stroke") >= 0) {
+						fillStroke["stroke"] = true;
+					}
+				}
+			}
+		}
+		// -------------------------------------------------------------
+
+		// Background dependent label rendering ------------------------
+		if (this.lconfig[p_layername].style.backgroundependent !== undefined) {
+			let lwcr, lr = [];
+			mapCtrller.rcvctrler.getRasterNames(lr, true);
+			for (let bkraster in this.lconfig[p_layername].style.backgroundependent) {
+				if (this.lconfig[p_layername].style.backgroundependent.hasOwnProperty(bkraster)) {
+					lwcr = bkraster.toLowerCase();
+					if (lr.indexOf(lwcr) >= 0) {
+						for (var sty_attr in this.lconfig[p_layername].style.backgroundependent[bkraster]) 
+						{
+							if (this.lconfig[p_layername].style.backgroundependent[bkraster].hasOwnProperty(sty_attr)) {
+								console.log("sty_attr:"+sty_attr);
+								this_styleobj[sty_attr] = this.lconfig[p_layername].style.backgroundependent[bkraster][sty_attr];
+								if (sty_attr.indexOf("fill") >= 0) {
+									fillStroke["fill"] = true;
+								}
+								if (sty_attr.indexOf("stroke") >= 0) {
+									fillStroke["stroke"] = true;
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 		// -------------------------------------------------------------
 		
-		var mapCtrller = this.mapcontroller;
-
 		if (mapCtrller.drawnrasters.length > 0 && this.lconfig[p_layername].style.overraster !== undefined) {
 			for (var or_sty_attr in this.lconfig[p_layername].style.overraster) 
 			{
 				if (this.lconfig[p_layername].style.overraster.hasOwnProperty(or_sty_attr)) {
 					this_styleobj[or_sty_attr] = this.lconfig[p_layername].style.overraster[or_sty_attr];
+					if (or_sty_attr.indexOf("fill") >= 0) {
+						fillStroke["fill"] = true;
+					}
+					if (or_sty_attr.indexOf("stroke") >= 0) {
+						fillStroke["stroke"] = true;
+					}
 				}
 			}		
 		}
@@ -587,19 +639,27 @@ function MapLabelEngine(p_mapcontroller) {
 						geom.pathCenter(lbl_components[1], lbl_components[2], anchpt);				
 						grCtrller.saveCtx();
 						
-						stdfillstyle = grCtrller.getFillStyle();
+						//stdfillstyle = grCtrller.getFillStyle();
 						
 						grCtrller.setTextAlign('center');
 
 						// shadow
-						grCtrller.setFillStyle('#000');
-						grCtrller.rotatedText(lbl_components[0], anchpt, 0);
+						//grCtrller.setFillStyle('#000');
+						//grCtrller.rotatedText(lbl_components[0], anchpt, 0, fillStroke);
 
 						// HARDCODED
-						anchpt[0] = anchpt[0] - 2;
-						anchpt[1] = anchpt[1] - 2;
-						grCtrller.setFillStyle(stdfillstyle);
-						grCtrller.rotatedText(lbl_components[0], anchpt, 0);
+						//anchpt[0] = anchpt[0] - 2;
+						//anchpt[1] = anchpt[1] - 2;
+						//grCtrller.setFillStyle(stdfillstyle);
+
+						if (this_styleobj.fillcolor !== undefined) {
+							grCtrller.setFillStyle(this_styleobj.fillcolor);
+						}
+						if (this_styleobj.strokecolor !== undefined) {
+							grCtrller.setStrokeStyle(this_styleobj.strokecolor);
+						}
+
+						grCtrller.rotatedText(lbl_components[0], anchpt, 0, fillStroke);
 						
 						grCtrller.restoreCtx();
 						break;
@@ -626,9 +686,11 @@ function MapLabelEngine(p_mapcontroller) {
 							steplen = (featLen - k * txtLen) / (k + 1);
 							stlen = steplen;	
 							for (var i=0; i<=k; i++) {
+
 								this.labelAlongPath(lbl_components[0], lbl_components[1], 
 										stlen, 
-										charsz, opt_displaylayer);
+										charsz, fillStroke, opt_displaylayer);
+
 								stlen += txtLen + stlen;
 								
 							}
@@ -746,8 +808,28 @@ function MapLabelEngine(p_mapcontroller) {
 						if (this_styleobj.leader_textstrokecolor !== undefined) {
 							grCtrller.setStrokeStyle(this_styleobj.leader_textstrokecolor);
 						}
+						if (this_styleobj.leader_textlinewidth !== undefined) {
+							grCtrller.setLineWidth(this_styleobj.leader_textlinewidth);
+						}
 
-						grCtrller.rotatedText(lbl_components[0], anchpt, angle_ret[0]);
+						/**
+						 * Label SHADOWS
+						 * Slows down display too much -- Firefox Quantum 65.0.2
+						if (this_styleobj.leader_shadowcolor !== undefined) {
+							grCtrller.setShadowColor(this_styleobj.leader_shadowcolor);
+						}
+						if (this_styleobj.leader_shadowoffsetx !== undefined) {
+							grCtrller.setShadowOffsetX(this_styleobj.leader_shadowoffsetx);
+						}
+						if (this_styleobj.leader_shadowoffsety !== undefined) {
+							grCtrller.setShadowOffsetY(this_styleobj.leader_shadowoffsety);
+						}
+						if (this_styleobj.leader_shadowblur !== undefined) {
+							grCtrller.setShadowBlur(this_styleobj.leader_shadowblur);
+						}
+						* */
+						
+						grCtrller.rotatedText(lbl_components[0], anchpt, angle_ret[0], fillStroke);
 						grCtrller.restoreCtx();
 						
 						break;
