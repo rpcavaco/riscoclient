@@ -125,7 +125,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.pendingimages = {};
 	this.imagecounters = new rasterLayerCounters();
 	
-	this.grController = null;
+	//this.grController = null;
+	this.grCtrlrMgr = null;
 	this.mapctrlsmgr = null;
 	this.baseurl = null;
 	this.filename = null;
@@ -245,8 +246,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var dx = p_ptX - this.cx;
 		var dy = p_ptY - this.cy;
 		var scrpt = [];
-
-		var cdims = this.grController.getCanvasDims();
+		
+		var cdims = this.getGraphicController().getCanvasDims();
 
 		var hwidth = (cdims[0] / 2.0) / this.m;
 		var hheight = (cdims[1] / 2.0) / this.m;
@@ -338,7 +339,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	this.getMaxZIndex = function() 
 	{
-		return this.grController.maxzindex;
+		return this.getGraphicController().maxzindex;
 	};
 	this.updateLegend = function() {
 		this.legend_data.updateLegendWidget("LEG", this.getI18NMsgFunc());
@@ -384,7 +385,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		//new_env.expand(expfact);
 
-		var cdims = this.grController.getCanvasDims();
+		var cdims = this.getGraphicController().getCanvasDims();
 		var whRatioCanvas = cdims[0] / cdims[1];
 		if (new_env.getWHRatio() > whRatioCanvas) {
 			k = new_env.getWidth() / cdims[0];
@@ -452,9 +453,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var pt=[]; k = this.scale * (MapCtrlConst.MMPD / 1000.0);
 		this.m = 1.0 / k;
 		
-		this.grController.prepDisplay(opt_forceprepdisp);
+		this.getGraphicController().prepDisplay(opt_forceprepdisp);
 		
-		var cdims = this.grController.getCanvasDims();
+		var cdims = this.getGraphicController().getCanvasDims();
 
 		var hwidth = k * (cdims[0] / 2.0);
 		var hheight = k * (cdims[1] / 2.0);
@@ -1809,11 +1810,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	this.clearTransient = function() {
-		this.grController.clearDisplayLayer('transient');
+		this.getGraphicController().clearDisplayLayer('transient');
 		this._onTransientClear();
 	};
 	this.clearTemporary = function() {
-		this.grController.clearDisplayLayer('temporary');
+		this.getGraphicController().clearDisplayLayer('temporary');
 	};
 
 	this.clear = function(p_mode)
@@ -1824,17 +1825,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 
 		if (p_mode == MapCtrlConst.CLEARMODE_ALL) {
-			this.grController.clearDisplay(this.bgcolor);
+			this.getGraphicController().clearDisplay(this.bgcolor);
 		} 
 		if (p_mode == MapCtrlConst.CLEARMODE_ALL || p_mode == MapCtrlConst.CLEARMODE_VECTOR) {
-			this.grController.clearDisplayLayer('transient');
-			this.grController.clearDisplayLayer('base');
+			this.getGraphicController().clearDisplayLayer('transient');
+			this.getGraphicController().clearDisplayLayer('base');
 		} 
 		if (p_mode == MapCtrlConst.CLEARMODE_ALL) {
-			this.grController.clearDisplayLayer('raster');
+			this.getGraphicController().clearDisplayLayer('raster');
 		} else if (p_mode == MapCtrlConst.CLEARMODE_RASTER) {
-			this.grController.clearDisplayLayer('transient');
-			this.grController.clearDisplayLayer('raster');
+			this.getGraphicController().clearDisplayLayer('transient');
+			this.getGraphicController().clearDisplayLayer('raster');
 		}
 		
 	};
@@ -1935,7 +1936,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				// Se a imagem está cerregada vamos desenhá-la imediatamente no canvas
 				//this.imagecounters.incrementLoaded(p_rastername);
 				
-				this.grController.drawImage(p_imageelem.elem, p_imageelem.ulterrain[0], 
+				this.getGraphicController().drawImage(p_imageelem.elem, p_imageelem.ulterrain[0], 
 					p_imageelem.ulterrain[1], p_imageelem.sizes[0], p_imageelem.sizes[1], 
 					opt_displaylayer);
 					
@@ -1964,7 +1965,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (p_dolog) {
 					console.log(".. drawFeatureInCanvas, antes de drawMultiplePathCollection");
 				}
-				this.grController.drawMultiplePathCollection(p_feature.points, p_dostroke, p_dofill, 
+				this.getGraphicController().drawMultiplePathCollection(p_feature.points, p_dostroke, p_dofill, 
 					is_inscreenspace, opt_displaylayer, p_dolog, opt_forcemx);
 
 				break;
@@ -1973,7 +1974,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (p_dolog) {
 					console.log(".. drawFeatureInCanvas, POLY antes drawMultiplePath");
 				}
-				this.grController.drawMultiplePath(p_feature.points, p_dostroke, p_dofill, 
+				this.getGraphicController().drawMultiplePath(p_feature.points, p_dostroke, p_dofill, 
 					is_inscreenspace, opt_displaylayer, p_dolog,  opt_forcemx);			
 				break;
 				
@@ -2090,7 +2091,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 							displaylayer, do_forcemx);
 
 			if (opt_dodebug) {
-				console.log("  .. out_styleflags:"+JSON.stringify(out_styleflags)+" strokestyle:"+this.grController.getStrokeStyle('temporary'));
+				console.log("  .. out_styleflags:"+JSON.stringify(out_styleflags)+" strokestyle:"+this.getGraphicController().getStrokeStyle('temporary'));
 				console.log("  .. _drawFeature, depois drawFeatureInCanvas");
 			}
 
@@ -3485,51 +3486,51 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 			switch (attr) {
 				case "strokecolor":
-					this.grController.setStrokeStyle(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setStrokeStyle(p_styleobj[attr], opt_displaylayer);
 					out_styleflags[0] = true;
 					break;
 				case "fillcolor":
-					this.grController.setFillStyle(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setFillStyle(p_styleobj[attr], opt_displaylayer);
 					out_styleflags[1] = true;
 					break;
 				case "linewidth":
-					this.grController.setLineWidth(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setLineWidth(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "linejoin":
-					this.grController.setLineJoin(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setLineJoin(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "linecap":
-					this.grController.setLineCap(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setLineCap(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "font":
-					this.grController.setFont(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setFont(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "align":
-					this.grController.setTextAlign(p_styleobj[attr].toLowerCase(), opt_displaylayer);
+					this.getGraphicController().setTextAlign(p_styleobj[attr].toLowerCase(), opt_displaylayer);
 					break;
 				case "baseline":
-					this.grController.setBaseline(p_styleobj[attr].toLowerCase(), opt_displaylayer);
+					this.getGraphicController().setBaseline(p_styleobj[attr].toLowerCase(), opt_displaylayer);
 					break;
 				case "shadowcolor":
-					this.grController.setShadowColor(p_styleobj[attr].toLowerCase(), opt_displaylayer);
+					this.getGraphicController().setShadowColor(p_styleobj[attr].toLowerCase(), opt_displaylayer);
 					break;
 				case "shadowoffsetx":
-					this.grController.setShadowOffsetX(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setShadowOffsetX(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "shadowoffsety":
-					this.grController.setShadowOffsetY(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setShadowOffsetY(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "shadowblur":
-					this.grController.setShadowBlur(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setShadowBlur(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "bgstyle":
-					this.grController.setLabelBackground(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setLabelBackground(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "marker":
-					this.grController.setMarker(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setMarker(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "markersize":
-					this.grController.setMarkerSize(p_styleobj[attr], opt_displaylayer);
+					this.getGraphicController().setMarkerSize(p_styleobj[attr], opt_displaylayer);
 					break;
 			}
 		}
@@ -3538,42 +3539,42 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		// valores default
 		if (foundattrs.indexOf("linewidth") < 0) {
-			this.grController.setLineWidth(1, opt_displaylayer);
+			this.getGraphicController().setLineWidth(1, opt_displaylayer);
 		}
 		if (foundattrs.indexOf("linejoin") < 0) {
-			this.grController.setLineJoin("round", opt_displaylayer);
+			this.getGraphicController().setLineJoin("round", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("linecap") < 0) {
-			this.grController.setLineJoin("butt", opt_displaylayer);
+			this.getGraphicController().setLineJoin("butt", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("font") < 0) {
-			this.grController.setFont("10px sans-serif", opt_displaylayer);
+			this.getGraphicController().setFont("10px sans-serif", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("align") < 0) {
-			this.grController.setTextAlign("center", opt_displaylayer);
+			this.getGraphicController().setTextAlign("center", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("baseline") < 0) {
-			this.grController.setBaseline("alphabetic", opt_displaylayer);
+			this.getGraphicController().setBaseline("alphabetic", opt_displaylayer);
 		}
 
 		if (foundattrs.indexOf("shadowcolor") < 0) {
-			this.grController.setShadowColor("rgba(0,0,0,0)", opt_displaylayer);
+			this.getGraphicController().setShadowColor("rgba(0,0,0,0)", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("shadowoffsetx") < 0) {
-			this.grController.setShadowOffsetX(0, opt_displaylayer);
+			this.getGraphicController().setShadowOffsetX(0, opt_displaylayer);
 		}
 		if (foundattrs.indexOf("shadowoffsety") < 0) {
-			this.grController.setShadowOffsetY(0, opt_displaylayer);
+			this.getGraphicController().setShadowOffsetY(0, opt_displaylayer);
 		}
 		if (foundattrs.indexOf("shadowblur") < 0) {
-			this.grController.setShadowBlur(0, opt_displaylayer);
+			this.getGraphicController().setShadowBlur(0, opt_displaylayer);
 		}
 
 		if (foundattrs.indexOf("marker") < 0) {
-			this.grController.setMarker("square", opt_displaylayer);
+			this.getGraphicController().setMarker("square", opt_displaylayer);
 		}
 		if (foundattrs.indexOf("markersize") < 0) {
-			this.grController.setMarkerSize(1, opt_displaylayer);
+			this.getGraphicController().setMarkerSize(1, opt_displaylayer);
 		}
 
 	};
@@ -3593,12 +3594,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (this.styleStack[displaylayer].length == 0 || this.currentstyle == null) {
 			this.styleStack[displaylayer].push(
 				{
-					"strokecolor": this.grController.getStrokeStyle(displaylayer),
-					"fillcolor": this.grController.getFillStyle(displaylayer),
-					"linewidth": this.grController.getLineWidth(displaylayer),
-					"font": this.grController.getFont(displaylayer),
-					"align": this.grController.getTextAlign(displaylayer),
-					"baseline": this.grController.getBaseline(displaylayer)
+					"strokecolor": this.getGraphicController().getStrokeStyle(displaylayer),
+					"fillcolor": this.getGraphicController().getFillStyle(displaylayer),
+					"linewidth": this.getGraphicController().getLineWidth(displaylayer),
+					"font": this.getGraphicController().getFont(displaylayer),
+					"align": this.getGraphicController().getTextAlign(displaylayer),
+					"baseline": this.getGraphicController().getBaseline(displaylayer)
 				});
 		} else {
 			this.styleStack[displaylayer].push(clone(this.currentstyle));
@@ -3644,11 +3645,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		return (this.styleStack[displaylayer].length == 0);
 	};
-	this.getGraphicController = function(opt_displaylayer) {
-		return this.grController;
-	};
 
-	this.grController = new CanvasController(p_elemid, this);
+	//this.grController = new CanvasController(p_elemid, this);
+	this.grCtrlrMgr = new GraphicControllerMgr(this, p_elemid);
+	this.getGraphicController = function(opt_key) {
+		return this.grCtrlrMgr.get(opt_key);
+	};
+	
 	this.env = new Envelope2D();
 	this.mapctrlsmgr = new MapControlsMgr(this);
 	this.rcvctrler = new RetrievalController();
@@ -3670,20 +3673,20 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	}
 
 	this.setMarkerSize = function(p_style) {
-		this.grController.setMarkerSize(p_style);
+		this.getGraphicController().setMarkerSize(p_style);
 	};
 
 	this.setMarkVertexFunc = function(p_func) {
-		this.grController.setMarkVertexFunc(p_func);
+		this.getGraphicController().setMarkVertexFunc(p_func);
 	};
 	this.setMarkVertices = function(p_flag) {
-		this.grController.setMarkVertices(p_flag);
+		this.getGraphicController().setMarkVertices(p_flag);
 	};
 	this.setMarkMidpointFunc = function(p_func) {
-		this.grController.setMarkMidpointFunc(p_func);
+		this.getGraphicController().setMarkMidpointFunc(p_func);
 	};
 	this.setMarkMidpoints = function(p_flag) {
-		this.grController.setMarkMidpoints(p_flag);
+		this.getGraphicController().setMarkMidpoints(p_flag);
 	};
 
 	this.drawFromIndex = function(p_layername, p_ixname, p_keyvalue, in_inscreenspace, opt_displaylayer,
@@ -3837,34 +3840,30 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	{
 
 		// TODO: Externalizar a configuração deste "banner"
-		if (this.grController == null) {
-			return;
-		}
-
 		var ctxlyr = 'transient';
 		var inscreenspace = true;
 		var msg = p_msg;
-		this.grController.saveCtx(ctxlyr);
+		this.getGraphicController().saveCtx(ctxlyr);
 		var txtsz = 18;
-		this.grController.setFont(txtsz+"px Arial", ctxlyr);
-		var tw = this.grController.measureTextWidth(msg, ctxlyr);
+		this.getGraphicController().setFont(txtsz+"px Arial", ctxlyr);
+		var tw = this.getGraphicController().measureTextWidth(msg, ctxlyr);
 		var margin = 40;
 		var mask_offset_y = 60;
 		var mask_offset_y = 60;
 
 
 		var wid = 2 * margin + tw;
-		var mask_y = this.grController.getCanvasDims()[1]-mask_offset_y;
+		var mask_y = this.getGraphicController().getCanvasDims()[1]-mask_offset_y;
 		var text_y = mask_y + txtsz - 3;
 
 
-		this.grController.clearDisplayLayer(ctxlyr);
-		this.grController.setFillStyle('rgba(255, 0, 0, 0.5)', ctxlyr);
+		this.getGraphicController().clearDisplayLayer(ctxlyr);
+		this.getGraphicController().setFillStyle('rgba(255, 0, 0, 0.5)', ctxlyr);
 
-		this.grController.drawRect(0, mask_y, wid, 18, false, true, inscreenspace, ctxlyr);
-		this.grController.setFillStyle('white', ctxlyr);
-		this.grController.plainText(msg, [margin, text_y], ctxlyr);
-		this.grController.restoreCtx(ctxlyr);
+		this.getGraphicController().drawRect(0, mask_y, wid, 18, false, true, inscreenspace, ctxlyr);
+		this.getGraphicController().setFillStyle('white', ctxlyr);
+		this.getGraphicController().plainText(msg, [margin, text_y], ctxlyr);
+		this.getGraphicController().restoreCtx(ctxlyr);
 	}
 
 	try {
@@ -3878,7 +3877,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.mapctrlsmgr.createVisibleControls();
 	}
 
-	attEventHandler(this.grController.getTopCanvasElement(),
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
 			'mousedown',
 			(function (p_mapctrlsmgr) {
 				return function(e) {
@@ -3886,7 +3885,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				}
 			})(this.mapctrlsmgr)		
 	);
-	attEventHandler(this.grController.getTopCanvasElement(),
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
 			'mouseup',
 			(function (p_mapctrlsmgr) {
 				return function(e) {
@@ -3915,7 +3914,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		})(this.mapctrlsmgr)
 	);
 	
-	attEventHandler(this.grController.getTopCanvasElement(),
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
 			'mouseleave',
 			(function (p_mapctrlsmgr) {
 				return function(e) {
@@ -3924,7 +3923,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			})(this.mapctrlsmgr)	
 	);
 
-	addWheelListener(this.grController.getTopCanvasElement(),
+	addWheelListener(this.getGraphicController().getTopCanvasElement(),
 			(function (p_mapctrlsmgr) {
 				return function(e) {
 					p_mapctrlsmgr.mouseWheelCtrler.mousewheel(e);

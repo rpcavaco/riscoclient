@@ -29,7 +29,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 	this.added_lines_count = 0;
 	this.added_polys_count = 0;
 	
-	var cdims = this.mapcontroller.grController.getCanvasDims();
+	var cdims = this.mapcontroller.getGraphicController().getCanvasDims();
 	
 	this.step = p_step;	
 	this.width = parseInt(Math.ceil(cdims[0] / this.step));

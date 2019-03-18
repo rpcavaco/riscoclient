@@ -800,3 +800,51 @@ function legendData() {
 	* */
 }
 
+function GraphicControllerMgr(p_mapctrler, p_elemid) {
+	
+	this.orderedkeys = [];
+	this.graphicControllerCollection = {};
+	this.activekey = null;
+	
+	this.create = function(p_mapctrler, p_elemid, p_canvaskey) {
+		if (this.orderedkeys.indexOf(p_elemid) >= 0) {
+			throw new Error(String.format("graphicControllerMgr: key already in use: {0}",p_canvaskey));
+		}
+		this.orderedkeys.push(p_elemid);
+		this.graphicControllerCollection[p_canvaskey] = new CanvasController(p_elemid, p_mapctrler);
+		this.activekey = p_canvaskey;
+	};
+	
+	this.get = function(opt_canvaskey) {
+		let key;
+		if (this.orderedkeys.length == 0) {
+			throw new Error("graphicControllerMgr: no controllers available");
+		}
+		if (opt_canvaskey) {
+			if (this.graphicControllerCollection[opt_canvaskey] === undefined) {
+				throw new Error(String.format("graphicControllerMgr: get - no key: {0}", opt_canvaskey));
+			}
+			key = opt_canvaskey;
+		} else {
+			if (this.activekey == null) {
+				throw new Error("graphicControllerMgr: no active key");
+			}
+			key = this.activekey;
+		}
+		return this.graphicControllerCollection[key];
+	};
+	
+	this.setActive = function(p_canvaskey) {
+		if (this.orderedkeys.length == 0) {
+			throw new Error("graphicControllerMgr: no controllers available");
+		}
+		if (this.graphicControllerCollection[p_canvaskey] === undefined) {
+			throw new Error(String.format("graphicControllerMgr: setActive - no key: {0}", p_canvaskey));
+		}
+		this.activekey = p_canvaskey;
+	};
+	
+	this.create(p_mapctrler, p_elemid, "main");
+}
+	
+

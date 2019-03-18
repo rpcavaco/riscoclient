@@ -367,7 +367,7 @@ function MapLabelEngine(p_mapcontroller) {
 		var len = p_lblstr.length;
 		var ctrlcnt = 1500, bend_radius;
 		var new_lblpathcoords=[], filter_minlen = 3 * p_char_size;
-		var grCtrller = this.mapcontroller.grController;
+		var grCtrller = this.mapcontroller.getGraphicController();
 		var wrk_list = [];
 		
 		this.ensureLabeledLineLeftToRight(p_lblpathcoords);
@@ -612,7 +612,7 @@ function MapLabelEngine(p_mapcontroller) {
 			return;
 		}
 		
-		var grCtrller = mapCtrller.grController;		
+		var grCtrller = mapCtrller.getGraphicController();		
 		if (opt_displaylayer != null) {
 			grCtrller.setActiveDisplayLayer(opt_displaylayer);
 		} else {
