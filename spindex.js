@@ -425,7 +425,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			var idx = (p_row*p_mwidth)+p_col;
 			
 			var ret_np = null;
-
+			
 			if (layercell !== undefined && layercell != null) 
 			{
 				cell = layercell[idx];
@@ -452,18 +452,12 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 
 								case "mpoly":
 								case "poly":
+								
 									dist = geom.distanceToPoly(feat.points, feat.path_levels, p_pt);
-									if (featid==236) {
-										PT0 = p_pt;
-									PTS = feat.points;
-								}
 									break;
 									
 							}
 							
-							if (false && featid==236) {
-							console.log(String.format("d:{0}, r:{1}, min:{2}", dist, p_radius, out_checkobj.found_dist));
-						}
 							if (dist <= p_radius && dist < out_checkobj.found_dist) {
 								out_checkobj.found_dist = dist;
 								out_checkobj.found_oid = featid;
@@ -501,7 +495,6 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			aux: null
 		};
 		
-		//console.log(".... start checking ...");
 		for (var i=mincol; i<maxcol; i++) 
 		{
 			for (var j=minrow; j<maxrow; j++) 

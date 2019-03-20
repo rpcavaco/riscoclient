@@ -467,6 +467,7 @@ function MapControlsMgr(p_the_map) {
 
 	this.i18nmsgs = {
 			"pt": {
+				"ACTTOOL": "Ferramenta ativa:",				
 				"NONEW": "'MapControlsMgr' é classe, o seu construtor foi invocado sem 'new'",				
 				"NULLMAP": "'MapControlsMgr'sem mapa associado",
 				"INVTOOLNAME": "Identificador '{0}' de tool inválido na configuração do mapa",
@@ -474,6 +475,7 @@ function MapControlsMgr(p_the_map) {
 						
 			},			
 			"en": {
+				"ACTTOOL": "Activate tool:",				
 				"NONEW": "'MapControlsMgr' is a class, its constructor was invoked without 'new'",				
 				"NULLMAP": "'MapControlsMgr' without map",				
 				"INVTOOLNAME": "Invalid toolname '{0}' found in map config",
@@ -709,13 +711,13 @@ function MapControlsMgr(p_the_map) {
 	};
 	
 	this.activateTool = function(toolname) {
-		console.log("Activate tool:"+toolname);
+		console.log(this.msg("ACTTOOL")+toolname);
 		var the_tool, ret = false;
 		if (this.activetoolctrl == null || this.activetoolctrl.getName() != toolname)
 		{
 			the_tool = this.getTool(toolname);
 			if (the_tool==null) {
-				throw new Error(this.msg(String.format("TOOLNOTFOUND",toolname)));
+				throw new Error(this.msg(String.format(this.msg("TOOLNOTFOUND"),toolname)));
 			}
 			this.activetoolctrl = the_tool;
 			ret = true;

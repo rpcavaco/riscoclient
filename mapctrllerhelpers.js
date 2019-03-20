@@ -658,7 +658,7 @@ function rasterkey(p_lvl, p_col, p_row) {
 			formatPaddingDigits(p_row,0,5);
 }
 
-function rasterkey_from_pyrpos(p_pyrposarray) {
+function rasterkey_from_pyramid_pos(p_pyrposarray) {
 	//console.log("p_pyrposarray:"+JSON.stringify(p_pyrposarray));
 	return formatPaddingDigits(p_pyrposarray[0],0,3) + "_" + 
 			formatPaddingDigits(p_pyrposarray[1],0,5) + "_" + 
@@ -674,59 +674,138 @@ function emptyImageURL() {
 	return '';
 }
 
-function legendData() {
+/* -----------------------------------------------------------
+ * 	this.i18nmsgs = {
+			"pt": {
+				"NONEW": "'Envelope2D' é classe, o seu construtor foi invocado sem 'new'",					
+				"INVALIDPT": "Ponto inválido"					
+			}
+		};
+	this.msg = function(p_msgkey) {
+		// TODO: resolver detecção automática lang
+		//var langstr = navigator.language || navigator.userLanguage;
+		//var lang = langstr.splice(1,2);
+		var lang = "pt";
+		return this.i18nmsgs[lang][p_msgkey];
+	};
+			
+	if ( !(this instanceof arguments.callee) )
+		throw new Error(this.msg("NONEW"));
 	
-	this.orderedkeys = [];
+	this.getClassStr = function() {
+		return "Envelope2D";
+	};
+*/
+
+function LegendData(p_lyrconfig) {
+	
+	this.orderedlayers = []; // layer names
+	this.orderedlegkeys = {}; // lists by layer name
+	this.legclasscount = {}; // class count by layer name
+	
 	this.data = {};
 	this.widget_id = null;
+	this.maplyrconfig = p_lyrconfig;
+	
+	this.i18nmsgs = {
+		"pt": {
+			"NONEW": "'LegendData' é classe, o seu construtor foi invocado sem 'new'",					
+		}
+	};
+	this.msg = function(p_msgkey) {
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.splice(1,2);		
+		console.log(lang);
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
+		console.log(lang);
+		return this.i18nmsgs[lang][p_msgkey];
+	};
+	
+	if ( !(this instanceof arguments.callee) )
+		throw new Error(this.msg("NONEW"));
+	
+	this.getClassStr = function() {
+		return "LegendData";
+	};
 	
 	this.setWidgetId = function(p_widget_id) {
 		this.widget_id = p_widget_id;
 	};	
 	this.clear = function() {
-		this.orderedkeys.length = 0;
+		this.orderedlayers.length = 0;
+		this.orderedlegkeys = {}; 
+		this.emptylegclasscount = {}; 
 		this.data = {};
 	};
-	this.doset = function(p_layername, p_layertitle, p_style_obj) {
-		let key;
-		if (p_style_obj['labelkey'] === undefined) {
-			return;
-		}
-		key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
-		if (this.orderedkeys.indexOf(key) < 0) {
-			this.orderedkeys.push(key);
-		}
-		this.data[key] = {
-			"lname": p_layername,
-			"ltitle": p_layertitle,
-			"style": clone(p_style_obj),
-			"count": 0
-		};
-	};
-	
-	this.add = function(p_layername, p_layertitle, p_style_obj) {
-		let key;
-		if (p_style_obj['labelkey'] === undefined) {
-			return;
-		}
-		key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
-		if (this.orderedkeys.indexOf(key) >= 0) {
-			this.data[key]['count'] = this.data[key]['count'] + 1;
+	this.addSymbClass = function(p_layername, p_style_obj) {
+		
+		console.log("add: "+p_layername);
+		
+		//let key;
+		let layercaption = null;
+		let classcaptionkey = "";
+		
+		if (this.orderedlayers.indexOf(p_layername) < 0) {
+			this.orderedlayers.push(p_layername);
+			this.emptylegclasscount[p_layername] = 0;
 		} else {
-			this.orderedkeys.push(key);
-			this.data[key] = {
-				"lname": p_layername,
-				"ltitle": p_layertitle,
+			if (this.emptylegclasscount[p_layername] >= 2) {
+				return;
+			}
+		};
+		
+		if (this.maplyrconfig[p_layername] !== undefined && this.maplyrconfig[p_layername]['labelkey'] !== undefined) {
+			layercaption = this.maplyrconfig[p_layername]['labelkey'];
+		}
+
+		if (layercaption == null && p_style_obj['labelkey'] === undefined) {
+			return;
+		}
+
+		if (p_style_obj['labelkey'] !== undefined) {
+			classcaptionkey = p_style_obj['labelkey'];
+		}
+		
+		if (this.orderedlegkeys[p_layername] === undefined) {
+			this.orderedlegkeys[p_layername] = [];
+			this.data[p_layername] = {};
+		}
+		
+		
+		//key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
+		if (this.orderedlegkeys[p_layername].indexOf(classcaptionkey) < 0) {
+			if (classcaptionkey.length < 1) {
+				this.emptylegclasscount[p_layername] = this.legclasscount[p_layername] + 1;
+			}
+			if (this.emptylegclasscount[p_layername] < 2) {
+				this.orderedlegkeys[p_layername].push(classcaptionkey);
+			}
+		}
+
+console.log(this.data[p_layername]);
+		if (this.data[p_layername][classcaptionkey] === undefined) {
+			this.data[p_layername][classcaptionkey] = {
+				"layercaption": layercaption,
+				"classcaption": classcaption,
 				"style": clone(p_style_obj),
-				"count": 1
+				"count": 0
 			};
+		} else {
+			this.data[p_layername][classcaptionkey]["count"] = this.data[p_layername][classcaptionkey]["count"] + 1;
 		}
 	};
 	
 	this.updateLegendWidget = function(p_title_caption_key, p_i18n_function) {
 		console.log(JSON.stringify(this.data));	
 		let leg_container = null;	
-		let t, r, d, w, x, k, prevtitle=null, title, st;
+		let t, r, d, w, x, k, lyrtitle, st;
 		if (this.widget_id) {
 			
 			leg_container = document.getElementById(this.widget_id);
@@ -744,16 +823,22 @@ function legendData() {
 				w = document.createElement("p");	
 				d.appendChild(w);
 				
+				// Internationalized legend container title
 				x = document.createTextNode(p_i18n_function(p_title_caption_key));				
 				w.appendChild(x);				
 				setClass(w, "visctrl-h1");
 				
+				console.log(this.orderedkeys);
+				
 				for (var i=0; i<this.orderedkeys.length; i++) {
 					
 					k = this.orderedkeys[i];
-					title = this.data[k]["ltitle"];
+					if (this.data[k]["labelkey"] !== undefined) {
+						lyrtitle = p_i18n_function(this.data[k]["lname"]);
+						console.log(lyrtitle);
+					}
 					
-					if (prevtitle != title) {				
+					if (k != p_title_caption_key) {				
 						r = document.createElement("tr");	
 						t.appendChild(r);				
 						d = document.createElement("td");	
@@ -761,12 +846,8 @@ function legendData() {
 						
 						d.insertAdjacentHTML('afterbegin',title);
 									
-						//x = document.createTextNode(title);				
-						//d.appendChild(x);
-							
 						setClass(d, "visctrl-entry");
 					}
-					prevtitle = title;
 					
 					st = this.data[k]["style"];
 					if (st) {
@@ -774,8 +855,11 @@ function legendData() {
 						t.appendChild(r);				
 						d = document.createElement("td");	
 						r.appendChild(d);				
-						x = document.createTextNode(p_i18n_function(st["labelkey"]));
-						d.appendChild(x);	
+						//x = document.createTextNode(p_i18n_function(st["labelkey"]));
+						//d.appendChild(x);	
+						
+						d.insertAdjacentHTML('afterbegin',p_i18n_function(st["labelkey"]));
+						
 						setClass(d, "visctrl-subentry");
 					}
 					

@@ -574,7 +574,6 @@ function MapLabelEngine(p_mapcontroller) {
 						for (var sty_attr in this.lconfig[p_layername].style.backgroundependent[bkraster]) 
 						{
 							if (this.lconfig[p_layername].style.backgroundependent[bkraster].hasOwnProperty(sty_attr)) {
-								console.log("sty_attr:"+sty_attr);
 								this_styleobj[sty_attr] = this.lconfig[p_layername].style.backgroundependent[bkraster][sty_attr];
 								if (sty_attr.indexOf("fill") >= 0) {
 									fillStroke["fill"] = true;
@@ -622,7 +621,7 @@ function MapLabelEngine(p_mapcontroller) {
 		
 		var nxtlbl_exists = this.nextLabel(p_layername, lbl_components);
 		var txtLen, featLen, steplen, stlen;
-
+		
 		var stdfillstyle;
 		
 		while (nxtlbl_exists && ctrlcnt > 0) 
@@ -708,7 +707,7 @@ function MapLabelEngine(p_mapcontroller) {
 						        [lbl_components[1][2], lbl_components[1][3]],
 						        angle_ret
 						);
-						
+
 						grCtrller.saveCtx();
 						
 						if (this_styleobj.leader_arrowfillcolor !== undefined) {
