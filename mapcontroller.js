@@ -151,6 +151,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.prevhdims = [];
 	this.styleStack = {}; // by display layer
 	this.currentstyle = null;
+	this.altstylemode = false;
 	this.lconfig = {};
 	this.small_scale_source = null;
 	this.globalindex = {};
@@ -180,7 +181,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.element_stats = null;
 	this.layer_visibility = null;
 	
-	this.legend_visibilities = null;
 	
 	this._cancelCurrentChange = false;
 	
@@ -1088,18 +1088,24 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return this.lconfig[p_layername];
 	}
 
+/*
 	this.getLayerDefaultStyle = function(p_layername) {
 		let ret = null, lc = this.lconfig[p_layername];
 		if (lc) {
-			if (lc['style'] !== undefined) {
-				ret = lc['style'];
-			} else if (lc['condstyle'] !== undefined && lc['condstyle'] != null && lc['condstyle']['default'] !== undefined) {
-				ret = lc['condstyle']['default'];
+			if (this.altstylemode) {
+				ret = lc['altstyle'];
+			} else {
+				if (lc['style'] !== undefined) {
+					ret = lc['style'];
+				} else if (lc['condstyle'] !== undefined && lc['condstyle'] != null && lc['condstyle']['default'] !== undefined) {
+					ret = lc['condstyle']['default'];
+				}
 			}
 		}
 		
 		return ret;
 	}
+*/
 
 	this.checkLayerDrawingCondition = function(p_layername) 
 	{
@@ -2134,11 +2140,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					}
 				}
 			}
+		/*
 		} else {
 			let ds = this.getLayerDefaultStyle();
 			if (ds) {
 				//this.legend_data.add(p_layername, ds);
 			}
+			*/
 		}
 
 		if (!this.currentStyleIsDefault(displaylayer) && (out_styleflags.stroke || out_styleflags.fill))
@@ -2252,17 +2260,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		out_return_obj.hasstyle = false;
 		out_return_obj.perattribute = null;
 
-		// default style flags
-		/*
-		out_styleflags.push(true);
-		out_styleflags.push(false);
-
-		out_return.length = 2;
-		out_return[0] = false;
-		out_return[1] = null;
-		*/
-		
-
 		if (opt_style)
 		{
 			out_return_obj.hasstyle = true;
@@ -2276,7 +2273,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				return ret;
 			}
 			
-			if (this.lconfig[layername]["style"] !== undefined) {
+			if (this.altstylemode && this.lconfig[layername]["altstyle"] !== undefined) {
+				out_return_obj.hasstyle = true;
+				this.pushStyle(this.lconfig[layername]["altstyle"], out_return_obj.fillStroke, opt_displaylayer);
+			} else if (this.lconfig[layername]["style"] !== undefined) {
 				 // TODO: introduzir scaledependent e background depedent
 				out_return_obj.hasstyle = true;
 				this.pushStyle(this.lconfig[layername]['style'], out_return_obj.fillStroke, opt_displaylayer);
@@ -2285,6 +2285,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				this.pushStyle(this.lconfig[layername]["condstyle"]["default"], out_return_obj.fillStroke, opt_displaylayer);
 				out_return_obj.perattribute = this.lconfig[layername]["condstyle"]["perattribute"];
 			}
+			
+			/*
+			if (out_return_obj.hasstyle && this.lconfig[layername]["altstyle"] !== undefined && this.lconfig[layername]["altstyle"] != null ) {
+				out_return_obj.altstyle = this.lconfig[layername]["altstyle"]
+			}*/
 		}
 
 		return ret;
