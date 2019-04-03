@@ -11,7 +11,8 @@ var MapCtrlConst = {
 	REFRESH_VECTORS: 2,
 	REFRESH_RASTERS: 4,
 	MINSCALE: 100,
-	MAXLAYERCOUNT: 300
+	MAXLAYERCOUNT: 300,
+	TOCBCKGRDCOLOR: "rgba(24, 68, 155, 0.85)"
 };
 
 // opt_alternate_Layer - indica se o filtro se destina a ser aplicado APENAS
@@ -242,10 +243,16 @@ function Envelope2D() {
 			}
 		};
 	this.msg = function(p_msgkey) {
-		// TODO: resolver detecção automática lang
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey];
 	};
 			
@@ -674,48 +681,85 @@ function emptyImageURL() {
 	return '';
 }
 
-/* -----------------------------------------------------------
- * 	this.i18nmsgs = {
-			"pt": {
-				"NONEW": "'Envelope2D' é classe, o seu construtor foi invocado sem 'new'",					
-				"INVALIDPT": "Ponto inválido"					
-			}
-		};
-	this.msg = function(p_msgkey) {
-		// TODO: resolver detecção automática lang
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
-		return this.i18nmsgs[lang][p_msgkey];
-	};
-			
-	if ( !(this instanceof arguments.callee) )
-		throw new Error(this.msg("NONEW"));
+function layerActivateTOC(p_domelem, p_ctx, p_styleobj, b_geomtype) {
 	
-	this.getClassStr = function() {
-		return "Envelope2D";
-	};
-*/
+	p_domelem.style.color = 'white';
+	p_ctx.fillStyle = MapCtrlConst.TOCBCKGRDCOLOR;
+	p_ctx.strokeStyle = p_ctx.fillStyle;
+	p_ctx.fillRect (0, 0, 28, 20);
+	p_ctx.strokeRect (0, 0, 28, 20);
 
-function LegendData(p_lyrconfig) {
+	styleflags = {};
+	ctxGenericApplyStyle(p_ctx, p_styleobj, styleflags);
+
+	if (b_geomtype == "POLY") {
+		if (styleflags.fill) {
+			p_ctx.fillRect (3, 3, 22, 14);
+		}
+		if (styleflags.stroke) {
+			p_ctx.strokeRect (3, 3, 22, 14);
+		}
+	} else if (b_geomtype == "LINE") {
+		if (styleflags.stroke) {
+			p_ctx.beginPath();
+			p_ctx.moveTo(3,14);
+			p_ctx.lineTo(8,3);
+			p_ctx.lineTo(17,14);
+			p_ctx.lineTo(22,3);
+			p_ctx.stroke();
+		}
+	} else if (b_geomtype == "POINT") {
+		//
+		//
+	}
+
+}
+
+function layerDeactivateTOC(p_domelem, p_ctx) {
 	
-	this.orderedlayers = []; // layer names
-	this.orderedlegkeys = {}; // lists by layer name
-	this.legclasscount = {}; // class count by layer name
+	p_domelem.style.color = '#a0a0a0';
+	p_ctx.fillStyle = MapCtrlConst.TOCBCKGRDCOLOR;
+	p_ctx.strokeStyle = p_ctx.fillStyle;
+	p_ctx.fillRect (0, 0, 28, 20);
+	p_ctx.strokeRect (0, 0, 28, 20);
+
+	styleflags = {};
+	ctxGenericApplyStyle(p_ctx, {
+		"strokecolor": "#a0a0a0",
+		"linewidth": 2
+	}, styleflags);
 	
-	this.data = {};
+	p_ctx.beginPath();
+	p_ctx.moveTo(4,15);
+	p_ctx.lineTo(23,4);
+	p_ctx.stroke();
+	p_ctx.beginPath();
+	p_ctx.lineTo(4,4);
+	p_ctx.lineTo(23,15);
+	p_ctx.stroke();
+}
+
+function StyleVisibility(p_mapctrlr, p_config) {
+
+	this.styles = [];
+	this.orderedindexes = [];
+	this.elementstats = {};
+	this._visibilities = {};
+	this.interactivities = {};
+	
 	this.widget_id = null;
-	this.maplyrconfig = p_lyrconfig;
+	this.maplyrconfig = p_config.lconfig;
+	this.mapctrlssetup = p_config.controlssetup;
+	this.mapcontroller = p_mapctrlr;
 	
 	this.i18nmsgs = {
 		"pt": {
-			"NONEW": "'LegendData' é classe, o seu construtor foi invocado sem 'new'",					
+			"NONEW": "'StyleVisibility' é classe, o seu construtor foi invocado sem 'new'",					
 		}
 	};
 	this.msg = function(p_msgkey) {
 		let langstr = navigator.language || navigator.userLanguage;
-		let lang = langstr.splice(1,2);		
-		console.log(lang);
+		let lang = langstr.substring(0,2);		
 		if (this.i18nmsgs[lang] === undefined) {
 			for (let k in this.i18nmsgs) {
 				if (this.i18nmsgs.hasOwnProperty(k)) {
@@ -724,7 +768,6 @@ function LegendData(p_lyrconfig) {
 				}
 			}
 		}
-		console.log(lang);
 		return this.i18nmsgs[lang][p_msgkey];
 	};
 	
@@ -732,85 +775,97 @@ function LegendData(p_lyrconfig) {
 		throw new Error(this.msg("NONEW"));
 	
 	this.getClassStr = function() {
-		return "LegendData";
+		return "StyleVisibility";
 	};
 	
 	this.setWidgetId = function(p_widget_id) {
 		this.widget_id = p_widget_id;
 	};	
-	this.clear = function() {
-		this.orderedlayers.length = 0;
-		this.orderedlegkeys = {}; 
-		this.emptylegclasscount = {}; 
-		this.data = {};
+	this.clearvis = function(p_hard) {
+		//console.log("clearvis:"+p_hard);
+		if (p_hard) {
+			this.orderedindexes.length = 0;
+			this.elementstats = {};
+			for (let k_lname in this._visibilities) {
+				if (this._visibilities.hasOwnProperty(k_lname)) {
+					this._visibilities[k_lname] = true;
+				}		
+			}	
+		} else {
+			for (let k_idx in this.elementstats) {
+				if (this.elementstats.hasOwnProperty(k_idx)) {
+					this.elementstats[k_idx] = [0,0,0,0];
+				}		
+			}	
+		}	
+		//console.log(this.elementstats);
+
 	};
-	this.addSymbClass = function(p_layername, p_style_obj) {
+	this.isLyrTOCVisibile = function(p_lname) {
+		let ret = false;
+		if (this._visibilities[p_lname] !== undefined) {
+			ret = this._visibilities[p_lname];
+		}
+		return ret;
+	};
+	this.changeVisibility = function(p_lname, p_isvisible) {
+		this._visibilities[p_lname] = p_isvisible;
+	};
+	this.toggleVisibility = function(p_lname) {
+		this._visibilities[p_lname] = !this._visibilities[p_lname];
+	};
+	this.getGeomType = function(p_idx) {
 		
-		console.log("add: "+p_layername);
-		
-		//let key;
-		let layercaption = null;
-		let classcaptionkey = "";
-		
-		if (this.orderedlayers.indexOf(p_layername) < 0) {
-			this.orderedlayers.push(p_layername);
-			this.emptylegclasscount[p_layername] = 0;
-		} else {
-			if (this.emptylegclasscount[p_layername] >= 2) {
-				return;
+		ret = "NONE";
+		if (this.elementstats[p_idx] !== undefined && this.elementstats[p_idx].length !== undefined) {
+			var maxlist = this.elementstats[p_idx].reduce(function(acc, currv, curridx) {
+				let mv, retlist = [acc[0], acc[1]];
+				mv = Math.max(retlist[1], currv);
+				if (mv != retlist[1]) {
+					retlist[1] = mv;
+					if (retlist[1] == currv) {
+						retlist[0] = curridx;
+					}
+				}
+				return retlist;
+			}, [-1,0]);
+			
+			if (maxlist[0] >= 0) {
+				switch(maxlist[0]) {
+					case 0:
+						ret = "POINT";
+						break;
+					case 1:
+						ret = "LINE";
+						break;
+					case 2:
+						ret = "POLY";
+				}
 			}
-		};
-		
-		if (this.maplyrconfig[p_layername] !== undefined && this.maplyrconfig[p_layername]['labelkey'] !== undefined) {
-			layercaption = this.maplyrconfig[p_layername]['labelkey'];
-		}
-
-		if (layercaption == null && p_style_obj['labelkey'] === undefined) {
-			return;
-		}
-
-		if (p_style_obj['labelkey'] !== undefined) {
-			classcaptionkey = p_style_obj['labelkey'];
-		}
-		
-		if (this.orderedlegkeys[p_layername] === undefined) {
-			this.orderedlegkeys[p_layername] = [];
-			this.data[p_layername] = {};
-		}
-		
-		
-		//key = p_layername + "_" + p_style_obj['labelkey'].toUpperCase();
-		if (this.orderedlegkeys[p_layername].indexOf(classcaptionkey) < 0) {
-			if (classcaptionkey.length < 1) {
-				this.emptylegclasscount[p_layername] = this.legclasscount[p_layername] + 1;
-			}
-			if (this.emptylegclasscount[p_layername] < 2) {
-				this.orderedlegkeys[p_layername].push(classcaptionkey);
-			}
-		}
-
-console.log(this.data[p_layername]);
-		if (this.data[p_layername][classcaptionkey] === undefined) {
-			this.data[p_layername][classcaptionkey] = {
-				"layercaption": layercaption,
-				"classcaption": classcaption,
-				"style": clone(p_style_obj),
-				"count": 0
-			};
-		} else {
-			this.data[p_layername][classcaptionkey]["count"] = this.data[p_layername][classcaptionkey]["count"] + 1;
-		}
+		}		
+		return ret;	
 	};
 	
-	this.updateLegendWidget = function(p_title_caption_key, p_i18n_function) {
-		console.log(JSON.stringify(this.data));	
+	this.updateWidget = function(p_title_caption_key, p_i18n_function) {
+
 		let leg_container = null;	
-		let t, r, d, w, x, k, lyrtitle, st;
+		let t, r, d, d2, w, x, capparent, oidx, sty, lyrtitle, gtype;
+		let currlayercaption = null;
+		
+		let items = 0, cnvidx = -1, caption_created=false;
+		
+		// Internationalized legend container title
+		function createTitleCaption(p_parent, p_title_key) {
+			let x = document.createTextNode(p_i18n_function(p_title_key));				
+			p_parent.appendChild(x);				
+			setClass(p_parent, "visctrl-h1");
+		}
+		
 		if (this.widget_id) {
 			
 			leg_container = document.getElementById(this.widget_id);
 			if (leg_container) {
-				
+
 				while (leg_container.firstChild) {
 					leg_container.removeChild(leg_container.firstChild);
 				}	
@@ -820,69 +875,209 @@ console.log(this.data[p_layername]);
 				t.appendChild(r);				
 				d = document.createElement("td");	
 				r.appendChild(d);				
-				w = document.createElement("p");	
-				d.appendChild(w);
+				capparent = document.createElement("p");	
+				d.appendChild(capparent);
 				
-				// Internationalized legend container title
-				x = document.createTextNode(p_i18n_function(p_title_caption_key));				
-				w.appendChild(x);				
-				setClass(w, "visctrl-h1");
-				
-				console.log(this.orderedkeys);
-				
-				for (var i=0; i<this.orderedkeys.length; i++) {
+				for (var i=this.orderedindexes.length-1; i>=0; i--) {
 					
-					k = this.orderedkeys[i];
-					if (this.data[k]["labelkey"] !== undefined) {
-						lyrtitle = p_i18n_function(this.data[k]["lname"]);
-						console.log(lyrtitle);
+					oidx = this.orderedindexes[i];	
+					if (Object.keys(this.elementstats).indexOf(oidx.toString()) < 0) {
+						continue;
 					}
 					
-					if (k != p_title_caption_key) {				
+					sty = this.styles[oidx];					
+					if (sty == null) {
+						continue;
+					}
+
+					if (sty["lyrlabelkey"] !== undefined && sty["lyrlabelkey"].length > 0) {
+						lyrtitle = p_i18n_function(sty["lyrlabelkey"]);
+					}
+					
+					items++;
+					
+					if (currlayercaption != lyrtitle && lyrtitle.length > 0) {	
+						
+						if (!caption_created) {
+							createTitleCaption(capparent, p_title_caption_key);
+							caption_created = true;
+						}
 						r = document.createElement("tr");	
 						t.appendChild(r);				
 						d = document.createElement("td");	
+						
+						if (sty.style["labelkey"] !== undefined) {
+							d.colSpan = 2;
+						}
 						r.appendChild(d);	
 						
-						d.insertAdjacentHTML('afterbegin',title);
-									
+						d.insertAdjacentHTML('afterbegin',lyrtitle);
 						setClass(d, "visctrl-entry");
 					}
+					currlayercaption = 	lyrtitle;	
 					
-					st = this.data[k]["style"];
-					if (st) {
+					if (sty.style["labelkey"] !== undefined) {
+
+						if (!caption_created) {
+							createTitleCaption(capparent, p_title_caption_key);
+							caption_created = true;
+						}
+						
 						r = document.createElement("tr");	
 						t.appendChild(r);				
 						d = document.createElement("td");	
 						r.appendChild(d);				
-						//x = document.createTextNode(p_i18n_function(st["labelkey"]));
-						//d.appendChild(x);	
 						
-						d.insertAdjacentHTML('afterbegin',p_i18n_function(st["labelkey"]));
-						
-						setClass(d, "visctrl-subentry");
+						d.insertAdjacentHTML('afterbegin',p_i18n_function(sty.style["labelkey"]));						
+						if (currlayercaption) {
+							setClass(d, "visctrl-subentry");
+						} else {
+							setClass(d, "visctrl-entry");
+						}
 					}
+
+					sepbar = false;
+					if (cnvidx >= 0 && getClass(d).indexOf("visctrl-entry") >= 0) {
+						d.setAttribute('style', "border-top: 1px dotted lightgrey");
+						sepbar = true;
+					}
+						
+					d2 = document.createElement("td");	
+					r.appendChild(d2);				
+
+					if (sepbar && cnvidx >= 0) {
+						d2.setAttribute('style', "border-top: 1px dotted lightgrey");
+					}
+
+					cnvidx++;
+					// Legend symbol
+					canvasel = document.createElement('canvas');
+					canvasel.setAttribute('class', 'visctrl-classimg');
+					canvasel.setAttribute('id', 'cnv'+cnvidx);
+					canvasel.setAttribute('width', '28');
+					canvasel.setAttribute('height', '20');
 					
-							
+					
+					let ctx = canvasel.getContext('2d');
+					gtype = this.getGeomType(oidx);
+					if (this.isLyrTOCVisibile(sty.lname) && gtype != "NONE") {
+						layerActivateTOC(d, ctx, sty.style, gtype);
+					} else {
+						layerDeactivateTOC(d, ctx);
+					}
+
+					(function(p_self, p_canvasel, p_elem, p_ctx, p_lname, p_styleobj, p_oidx) {						
+						attEventHandler(p_canvasel, 'click',
+							function(evt) {
+								let v_gtype = p_self.getGeomType(p_oidx); 
+								p_self.toggleVisibility(p_lname);
+								/*
+								 * if (p_self.isLyrTOCVisibile(p_lname) && (v_gtype != "NONE")) {
+									layerActivateTOC(p_elem, p_ctx, p_styleobj, v_gtype);
+								} else {
+									layerDeactivateTOC(p_elem, p_ctx);
+								}
+								*/
+								p_self.mapcontroller.redraw(false, null, null, true);
+								p_self.mapcontroller.onChangeFinish("toggleTOC");
+							}
+						);
+					})(this, canvasel, d, ctx, sty.lname, sty.style, oidx);
+
+					d2.appendChild(canvasel);
 				}
-											
+			}
+			
+			if (!caption_created && capparent.parentElement !== undefined) {
+				let count = 8, pe = capparent;
+				while (count > 0 && pe != null && (pe.tagName.toLowerCase() != 'div' || this.widget_id == pe.id)) {
+					pe = pe.parentElement;
+					count--;
+				}
+				if (pe.tagName.toLowerCase() == 'div') {
+					pe.style.visibility = "hidden";
+				}
 			}
 		}
 	};
+	
+	this.incrementElemStats = function(p_gtype, p_style_obj) {
+		let idx;			
+		if (p_style_obj["_index"] !== undefined) {
+			idx = p_style_obj["_index"];
+			if (this.orderedindexes.indexOf(idx) < 0) {
+				this.orderedindexes.push(idx);
+			}
+			if (this.elementstats[idx] === undefined) {
+										/* point, line, poly, undefined */
+				this.elementstats[idx] = [0,0,0,0];
+			}
 
-	
-	/*
-	this.getStyle = function(p_key) {
-		let key = p_key.toUpperCase();
-		return this.styles[key];
+			if (p_gtype.toUpperCase() == "POINT") {
+				this.elementstats[idx][0] = this.elementstats[idx][0] + 1;
+			} else if (p_gtype.toUpperCase() == "LINE") {
+				this.elementstats[idx][1] = this.elementstats[idx][1] + 1;
+			} else if (p_gtype.toUpperCase() == "POLY") {
+				this.elementstats[idx][2] = this.elementstats[idx][2] + 1;
+			} else {
+				this.elementstats[idx][3] = this.elementstats[idx][3] + 1;
+			}
+
+		}	
 	};
 	
-	this.getElemCount = function(p_key) {
-		let key = p_key.toUpperCase();
-		return this.elemcounter[key];
-	};
-	* */
+	let lc, cs;
+	for (let k_lname in this.maplyrconfig) {
+		lc = this.maplyrconfig[k_lname];
+		if (lc["style"] !== undefined && lc["style"] != null) {
+			lc["style"]["_index"] = this.styles.length;
+			this.changeVisibility(k_lname, true);
+			this.styles.push({
+					"lname": k_lname,
+					"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+					"style": clone(lc["style"])
+				});
+		} else if (lc["condstyle"] !== undefined && lc["condstyle"] != null) {
+			cs = lc["condstyle"];
+			this.changeVisibility(k_lname, true);
+			for (let k_cstype in cs) {
+				if (k_cstype == "default") {
+					cs[k_cstype]["_index"] = this.styles.length;
+					this.styles.push({
+							"lname": k_lname,
+							"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+							"style": clone(cs[k_cstype])
+						});
+				} else if (k_cstype == "permode") {
+					for (let k_attrname in cs[k_cstype]) {
+						cs[k_cstype][k_attrname]["_index"] = this.styles.length;
+						this.styles.push({
+								"lname": k_lname,
+								"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+								"style": clone(cs[k_cstype][k_attrname])
+							});
+					}
+				} else if (k_cstype == "perattribute") {
+					for (let k_attrname in cs[k_cstype]) {
+						for (let i_class = 0; i_class < cs[k_cstype][k_attrname].length; i_class++) {
+							cs[k_cstype][k_attrname][i_class]["style"]["_index"] = this.styles.length;
+							this.styles.push({
+									"lname": k_lname,
+									"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+									"style": clone(cs[k_cstype][k_attrname][i_class]["style"])
+								});
+						} 
+					}
+				}
+			}
+		} else if (lc["label"] !== undefined && lc["label"] != null && lc["label"]["style"] !== undefined && lc["label"]["style"] != null ) {
+			this.changeVisibility(k_lname, true);
+		} else if (lc["markerfunction"] !== undefined && lc["markerfunction"] != null) {
+			this.changeVisibility(k_lname, true);
+		}
+	}
 }
+
 
 function GraphicControllerMgr(p_mapctrler, p_elemid) {
 	

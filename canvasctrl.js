@@ -5,6 +5,92 @@ function canvElName(p_layername) {
 	return "_dl" + p_layername;
 }
 
+function ctxGenericApplyStyle(p_canvasctx, p_styleobj, out_styleflags) {
+	
+	let foundattrs = [];
+	for (let k_attr in p_styleobj) {
+		if (!p_styleobj.hasOwnProperty(k_attr)) {
+			continue;
+		}
+		if (foundattrs.indexOf(k_attr) < 0) {
+			foundattrs.push(k_attr);
+		}
+		switch (k_attr) {
+			case "strokecolor":
+				p_canvasctx.strokeStyle = p_styleobj[k_attr];
+				out_styleflags.stroke = true;
+				break;
+			case "fillcolor":
+				p_canvasctx.fillStyle = p_styleobj[k_attr];
+				out_styleflags.fill = true;
+				break;
+			case "linewidth":
+				p_canvasctx.lineWidth = p_styleobj[k_attr];
+				break;
+			case "linejoin":
+				p_canvasctx.lineJoin = p_styleobj[k_attr];
+				break;
+			case "linecap":
+				p_canvasctx.lineCap = p_styleobj[k_attr];
+				break;
+			case "font":
+				p_canvasctx.font = p_styleobj[k_attr];
+				break;
+			case "align":
+				p_canvasctx.textAlign = p_styleobj[k_attr].toLowerCase();
+				break;
+			case "baseline":
+				p_canvasctx.textBaseline = p_styleobj[k_attr].toLowerCase();
+				break;
+			case "shadowcolor":
+				p_canvasctx.shadowColor = p_styleobj[k_attr].toLowerCase();
+				break;
+			case "shadowoffsetx":
+				p_canvasctx.shadowOffsetX = p_styleobj[k_attr];
+				break;
+			case "shadowoffsety":
+				p_canvasctx.shadowOffsetY = p_styleobj[k_attr];
+				break;
+			case "shadowblur":
+				p_canvasctx.shadowBlur = p_styleobj[k_attr];
+				break;
+		}
+	}
+	
+	// valores default
+	if (foundattrs.indexOf("linewidth") < 0) {
+		p_canvasctx.lineWidth = 1;
+	}
+	if (foundattrs.indexOf("linejoin") < 0) {
+		p_canvasctx.lineJoin = "round";
+	}
+	if (foundattrs.indexOf("linecap") < 0) {
+		p_canvasctx.lineCap = "butt";
+	}
+	if (foundattrs.indexOf("font") < 0) {
+		p_canvasctx.font = "10px sans-serif";
+	}
+	if (foundattrs.indexOf("align") < 0) {
+		p_canvasctx.textAlign = "center";
+	}
+	if (foundattrs.indexOf("baseline") < 0) {
+		p_canvasctx.textBaseline = "alphabetic";
+	}
+
+	if (foundattrs.indexOf("shadowcolor") < 0) {
+		p_canvasctx.shadowColor = "rgba(0,0,0,0)";
+	}
+	if (foundattrs.indexOf("shadowoffsetx") < 0) {
+		p_canvasctx.shadowOffsetX = 0;
+	}
+	if (foundattrs.indexOf("shadowoffsety") < 0) {
+		p_canvasctx.shadowOffsetY = 0;
+	}
+	if (foundattrs.indexOf("shadowblur") < 0) {
+		p_canvasctx.setShadowBlur = 0;
+	}
+
+}
 /** 
   * Object to control HTML Canvas rendering, usually automatically created at MapController instantiation
   * @param {string} p_elemid - The ID of HTML container object to recieve the canvases objects.
@@ -23,15 +109,24 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			"NONEW": "'CanvasController' é classe, o seu construtor foi invocado sem 'new'",
 			"NOID": "construtor de 'CanvasController' invocado sem ID do elemento canvas respectivo",
 			"NOCANVAS": "Este browser não suporta Canvas",
+			"NOSTYOBJ": "objecto de style inválido",
+			"NOTHDRAW": "uma das layers nao tem estilo definido: nada a desenhar",
 			"MISSLYRNAME": "nome de layer 'canvas' não encontrado:",
 			"MISSVRTMRKFUNC": "função de marcação de véritces não definida",
 			"MISMIDPMRKFUNC": "função de marcação de pontos médios não definida"
 		}
 	};
 	this.msg = function(p_msgkey) {
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey]
 	};
 	
@@ -205,25 +300,6 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	    return this.canvasDims;
 	};	
 	
-	// TODO: FALTA DOC
-	this.interpretStyleChgObj = function(p_stylechgobj, opt_displaylayer) {
-		
-		var dlayer;
-		if (opt_displaylayer) {
-			dlayer = opt_displaylayer;
-		} else {
-			dlayer = this.activeDisplayLayer;
-		}
-		
-		// stroke
-		if (p_stylechgobj['stroke'] !== undefined && p_stylechgobj['stroke'] != null) 
-		{
-			if (p_stylechgobj['stroke']['linewidth'] !== undefined) {				
-				this._ctxdict[dlayer].lineWidth = p_stylechgobj['stroke']['linewidth'];				
-			}		
-		}
-	}
-	
 	// TODO: USAR opt_displaylayer
 	this.getStrokeStyle = function(opt_displaylayer) 
 	{
@@ -343,6 +419,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 		
 	};
+	
 	this.setTextAlign = function(p_style, opt_displaylayer) {
 		var dlayer;
 		if (opt_displaylayer) {
@@ -453,27 +530,6 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		return this._internalstyles.label_background;
 	};
 
-	this.setMarker = function(p_style) {
-		this._internalstyles.marker = p_style.toLowerCase();
-	};
-	this.getMarker = function() {
-		if (this._internalstyles.marker === undefined) {
-			return "square";
-		} else {
-			return this._internalstyles.marker;
-		}
-	};
-	this.setMarkerSize = function(p_style) {
-		this._internalstyles.markersize = p_style;
-	};
-	this.getMarkerSize = function() {
-		if (this._internalstyles.markersize === undefined) {
-			return 1;
-		} else {
-			return this._internalstyles.markersize;
-		}
-	};
-	
 	this.measureTextWidth = function(p_txt, opt_displaylayer) {
 		var dlayer;
 		if (opt_displaylayer) {
@@ -554,7 +610,50 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		ctx.restore();
 	};	
 	
-	
+	this.applyStyle = function(p_styleobj, out_styleflags, opt_displaylayer)
+	{
+		out_styleflags.stroke = false;
+		out_styleflags.fill = false;
+		var foundattrs = [];
+
+		if (typeof p_styleobj == 'undefined') {
+			throw new Error("applyStyle "+this.msg("NOSTYOBJ"));
+		}
+		
+		let ctx = this.getCtx(opt_displaylayer);
+		if (ctx == null) {
+			throw new Error("applyStyle: no active graphic controller ccontext");
+		}
+
+		// apply generic canvas symbology attributes
+		ctxGenericApplyStyle(ctx, p_styleobj, out_styleflags);
+		
+		for (var attr in p_styleobj)
+		{
+			if (!p_styleobj.hasOwnProperty(attr)) {
+				continue;
+			}
+			if (foundattrs.indexOf(attr) < 0) {
+				foundattrs.push(attr);
+			}
+			switch (attr) {
+
+				case "bgstyle":
+					this.setLabelBackground(p_styleobj[attr], opt_displaylayer);
+					break;
+				case "marker":
+					this.setMarker(p_styleobj[attr], opt_displaylayer);
+					break;
+				case "markersize":
+					this.setMarkerSize(p_styleobj[attr], opt_displaylayer);
+					break;
+			}
+		}
+		if (out_styleflags.stroke === undefined ||  out_styleflags.fill === undefined || (!out_styleflags.stroke && !out_styleflags.fill)) {
+			throw new Error("applyStyle "+this.msg("NOTHDRAW"));
+		}
+	};
+		
 	// TODO: FAZER DOC
 	// Function drawSimplePath -- draw simple path in canvas
 	// Input parameters:
@@ -568,9 +667,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	//	 do_forcemx - force the use of transformation matrix
 											
 	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
-					is_inscreenspace, opt_displaylayer, dolog, do_forcemx) 
+					p_markerfunc, is_inscreenspace, opt_displaylayer, 
+					dolog, do_forcemx, p_mapctrlr, p_featattrs) 
 	{
-		var dlayer;
+		let dlayer, retgtype = "NONE";
 		if (opt_displaylayer) {
 			dlayer = opt_displaylayer;
 		} else {
@@ -583,64 +683,91 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_points.length % 2 != 0) {
 			throw new Error("Internal error: odd coordinate number in drawSimplePath:"+p_points.length);
 		}
-		this._ctxdict[dlayer].beginPath();
+		
+		if (p_points.length < 3) {
+			retgtype = "POINT";
+		} else {
+			if (p_points[p_points.length-1] == p_points[0] && p_points[p_points.length-2] == p_points[1]) {
+				retgtype = "POLY";
+			} else {
+				retgtype = "LINE";
+			}
+		}
+
 		var prevmidpt=[0,0], midpt=[0,0], prevpt=[0,0], pt=[];
 
-		for (var cpi=0; cpi<p_points.length; cpi+=2) 
-		{
-			pt.length = 2;
-			
+		if (retgtype = "POINT" && p_markerfunc != null) {
+
 			if (is_inscreenspace) {
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[cpi], p_points[cpi+1], pt);
+				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_points[cpi], p_points[cpi+1], pt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt, do_forcemx);
 			}
 
-			if (this.markVertices) {
-				this.markVertexFunc(pt[0], pt[1]);
-			}
-			if (this.markMidpoints) {
-				if (cpi > 0)
-				 {
-					midpt=[ 
-					        prevpt[0] + ((pt[0]-prevpt[0])/2.0), 
-					        prevpt[1] + ((pt[1]-prevpt[1])/2.0)
-					        ], 
-					this.markMidpointFunc( midpt[0], midpt[1] );
-					if (cpi > 1) {
-						this._ctxdict['transient'].moveTo(prevmidpt[0], prevmidpt[1]);
-						this._ctxdict['transient'].quadraticCurveTo(prevpt[0], prevpt[1], midpt[0], midpt[1]);
-						this._ctxdict['transient'].stroke();
-					}
-					prevmidpt[0] = midpt[0];
-					prevmidpt[1] = midpt[1];
+			p_markerfunc(this._ctxdict[dlayer], pt, p_mapctrlr, p_featattrs);
+			
+		} else {
+		
+			this._ctxdict[dlayer].beginPath();
+
+			for (var cpi=0; cpi<p_points.length; cpi+=2) 
+			{
+				pt.length = 2;
+				
+				if (is_inscreenspace) {
+					this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[cpi], p_points[cpi+1], pt);
+				} else {
+					this._mapcontroller.getScreenPtFromTerrain(p_points[cpi], p_points[cpi+1], pt, do_forcemx);
 				}
-				prevpt[0] = pt[0];
-				prevpt[1] = pt[1];
+
+				if (this.markVertices) {
+					this.markVertexFunc(pt[0], pt[1]);
+				}
+				if (this.markMidpoints) {
+					if (cpi > 0)
+					 {
+						midpt=[ 
+								prevpt[0] + ((pt[0]-prevpt[0])/2.0), 
+								prevpt[1] + ((pt[1]-prevpt[1])/2.0)
+								], 
+						this.markMidpointFunc( midpt[0], midpt[1] );
+						if (cpi > 1) {
+							this._ctxdict['transient'].moveTo(prevmidpt[0], prevmidpt[1]);
+							this._ctxdict['transient'].quadraticCurveTo(prevpt[0], prevpt[1], midpt[0], midpt[1]);
+							this._ctxdict['transient'].stroke();
+						}
+						prevmidpt[0] = midpt[0];
+						prevmidpt[1] = midpt[1];
+					}
+					prevpt[0] = pt[0];
+					prevpt[1] = pt[1];
+				}
+				
+				if (cpi==0) {
+					this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				} else {
+					this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+				}
+				
+				if (dolog) {
+					console.log("draw simple path on '"+dlayer+"', input:"+p_points[cpi]+","+p_points[cpi+1]+', screen:'+JSON.stringify(pt));
+				}
 			}
-			
-			if (cpi==0) {
-				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
-			} else {
-				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
-			}
-			
-			if (dolog) {
-				console.log("draw simple path on '"+dlayer+"', input:"+p_points[cpi]+","+p_points[cpi+1]+', screen:'+JSON.stringify(pt));
+			if (p_stroke) {
+				this._ctxdict[dlayer].stroke();
+				if (dolog) {
+					console.log(dlayer+" stroking");
+				}
+			} 
+			if (p_fill) {
+				this._ctxdict[dlayer].fill();
+				if (dolog) {
+					console.log(dlayer+" filling");
+				}
 			}
 		}
-		if (p_stroke) {
-			this._ctxdict[dlayer].stroke();
-			if (dolog) {
-				console.log(dlayer+" stroking");
-			}
-		} 
-		if (p_fill) {
-			this._ctxdict[dlayer].fill();
-			if (dolog) {
-				console.log(dlayer+" filling");
-			}
-		}
+		
+		return retgtype;
 	};
 
 
@@ -667,7 +794,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			return;
 		}
 
-		var dlayer;
+		var dlayer, retgtype = "NONE";
 		if (opt_displaylayer) {
 			dlayer = opt_displaylayer;
 		} else {
@@ -680,6 +807,21 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		for (var pidx=0; pidx<p_parts_of_points.length; pidx++)
 		{
 			points = p_parts_of_points[pidx];
+			
+			//console.log(points);
+
+			if (pidx == 0) {
+				if (points.length < 3) {
+					retgtype = "POINT";
+				} else {
+					if (points[points.length-2] == points[0] && points[points.length-1] == points[1]) {
+						retgtype = "POLY";
+					} else {
+						retgtype = "LINE";
+					}
+				}
+			}
+			
 			for (var cpi=0; cpi<points.length; cpi+=2) 
 			{
 				pt.length = 2;
@@ -712,6 +854,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				console.log("filling");
 			}
 		}
+		
+		return retgtype;
 	};
 	
 	// Function drawMultiplePathCollection -- draw collection of multiple paths in canvas
@@ -734,7 +878,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			return;
 		}
 
-		var dlayer;
+		var dlayer, retgtype = "NONE";
 		if (opt_displaylayer) {
 			dlayer = opt_displaylayer;
 		} else {
@@ -749,6 +893,18 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			for (var pidx=0; pidx<parts_of_points.length; pidx++)
 			{
 				points = parts_of_points[pidx];
+				if (pcidx == 0 && pidx == 0) {
+					if (points.length < 3) {
+						retgtype = "POINT";
+					} else {
+						if (points[points.length-1] == points[0] && points[points.length-2] == points[1]) {
+							retgtype = "POLY";
+						} else {
+							retgtype = "LINE";
+						}
+					}
+				}
+
 				for (var cpi=0; cpi<points.length; cpi+=2) 
 				{
 					pt.length = 2;
@@ -782,6 +938,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				console.log("filling");
 			}
 		}
+		
+		return retgtype;
 	};
 	
 	this.drawCenteredRect = function(p_cx, p_cy, p_width, p_height, 
@@ -813,7 +971,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	}
 	
 	this.drawCrossHairs = function(p_x, p_y, p_stroke, p_fill, 
-			is_inscreenspace, 
+			p_size, is_inscreenspace, 
 			opt_displaylayer, do_forcemx) 
 	{
 		var dlayer, pt=[], cpt=[];
@@ -825,7 +983,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		
 		pt.length = 2;
 		cpt.length = 2;
-		var sz = this.getMarkerSize();
+		var sz = p_size;
 
 		if (p_x!=null && p_y!=null) 
 		{
@@ -861,7 +1019,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	};
 
 	this.drawDiamond = function(p_x, p_y, p_stroke, p_fill, 
-			is_inscreenspace,
+			p_size, is_inscreenspace,
 			opt_displaylayer, do_forcemx) 
 	{
 		var dlayer, pt=[];
@@ -872,7 +1030,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 
 		pt.length = 2;
-		var sz = this.getMarkerSize();
+		var sz = p_size;
 		
 		if (p_x!=null && p_y!=null) 
 		{
@@ -904,7 +1062,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	};
 
 	this.drawSquare = function(p_x, p_y, p_stroke, p_fill, 
-		is_inscreenspace,
+		p_size, is_inscreenspace,
 		opt_displaylayer, do_forcemx) 
 	{
 		var pt, sz;
@@ -918,7 +1076,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		
 		pt.length = 2;
 		cpt.length = 2;
-		var sz = this.getMarkerSize();
+		var sz = p_size;
 		
 		if (p_x!=null && p_y!=null) 
 		{

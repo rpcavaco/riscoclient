@@ -5,16 +5,23 @@ function MapLabelEngine(p_mapcontroller) {
 		return "MapLabelEngine";
 	};
 	this.i18nmsgs = {
-			"pt": {
-				"NONEW": "'MapLabelEngine' é classe, o seu construtor foi invocado sem 'new'",
-				"NOMAPCTRL": "'MapLabelEngine' requer um objecto MapController, foi passada uma referencia nula",
-				"MISSLABATTRS": "Atributo a etiquetar não existe para a layer {0}. Reveja a configuração. 'label'->'attrib' é case sensitive."
-			}
-		};
+		"pt": {
+			"NONEW": "'MapLabelEngine' é classe, o seu construtor foi invocado sem 'new'",
+			"NOMAPCTRL": "'MapLabelEngine' requer um objecto MapController, foi passada uma referencia nula",
+			"MISSLABATTRS": "Atributo a etiquetar não existe para a layer {0}. Reveja a configuração. 'label'->'attrib' é case sensitive."
+		}
+	};
 	this.msg = function(p_msgkey) {
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey]
 	};
 
@@ -744,8 +751,8 @@ function MapLabelEngine(p_mapcontroller) {
 								if (this_styleobj.leader_arrowfillcolor !== undefined) {
 									grCtrller.setFillStyle(this_styleobj.leader_arrowfillcolor);
 								}
-								
-								grCtrller.drawSimplePath(coords, false, true, 
+
+								grCtrller.drawSimplePath(coords, false, true, null, 
 										true, null, false, false); 
 
 								geom.applyPolarShiftTo(startpt, 
@@ -787,7 +794,7 @@ function MapLabelEngine(p_mapcontroller) {
 								}
 								
 								grCtrller.drawSimplePath(coords, false, true, 
-										true, null, false, false); 
+										null, true, null, false, false); 
 
 								geom.applyPolarShiftTo(startpt, 
 										angle_ret[0], -offsetA, anchpt);

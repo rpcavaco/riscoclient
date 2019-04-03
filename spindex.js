@@ -11,9 +11,16 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			}
 		};
 	this.msg = function(p_msgkey) {
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey]
 	};
 

@@ -422,36 +422,47 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 				current_map = [];
 				this.the_map.getTerrainPt([x,y], current_map);
 				
-				this.the_map.grController.clearDisplayLayer('transient');
+				let styleflags = {}, gc = this.the_map.getGraphicController(), dl = 'transient';
+				if (gc == null) {
+					throw new Error("MeasureSegment tool, mousemove: no graphic context controller");
+				}
+				
+				gc.clearDisplayLayer('transient');
 
 				this.measvalterrain = formatFracDigits(geom.distance([this.start_map[0], this.start_map[1]], [current_map[0], current_map[1]]), 2);
 
-				this.the_map.drawCircle(this.start_map[0], this.start_map[1], this.measvalterrain, 
-					true, true, false, styleobj, 'transient');
+				gc.saveCtx(dl);
+				this.applyStyle(styleobj, styleflags, dl);
 
-				this.the_map.drawSimplePath([this.start_map[0], this.start_map[1], current_map[0], current_map[1]], 
-					true, false, inscreenspace, styleobj, 'transient', draw_dolog, forcemx); 
+				//gc.drawCircle(this.start_map[0], this.start_map[1], this.measvalterrain, 
+					//true, true, false, styleobj, 'transient');
+
+				gc.drawCircle(this.start_map[0], this.start_map[1], this.measvalterrain, true, true, 
+					true, 'transient', do_forcemx);
+
+				gc.drawSimplePath([this.start_map[0], this.start_map[1], current_map[0], current_map[1]], true, true,  
+					null, true, 'transient', draw_dolog, forcemx) 
 					
 				geom.twoPointAngle(this.start_screen, [x,y], angvals);
 				
 				ang = angvals[0];
 				if (angvals[1] == 2 || angvals[1] == 3) {
-					this.the_map.grController.setTextAlign("end",'transient');
+					gc.setTextAlign("end",'transient');
 					geom.applyPolarShiftTo([x,y], ang, -10, retpt);
 				} else {
-					this.the_map.grController.setTextAlign("start",'transient');
+					gc.setTextAlign("start",'transient');
 					geom.applyPolarShiftTo([x,y], ang, 10, retpt);
 				}
 				
 				geom.applyPolarShiftTo(retpt, ang+(Math.PI/2.0), 6, retpt);
 				
-				this.the_map.grController.saveCtx('transient');
-				this.the_map.grController.setFont('20px Arial', 'transient');
-				this.the_map.grController.setFillStyle('rgba(255,0,0,1)', 'transient');
+				gc.saveCtx('transient');
+				gc.setFont('20px Arial', 'transient');
+				gc.setFillStyle('rgba(255,0,0,1)', 'transient');
 
 // TODO: FILLSTROKE
-				this.the_map.grController.rotatedText(this.measvalterrain+" m", retpt, ang, 'transient');
-				this.the_map.grController.restoreCtx('transient');
+				gc.rotatedText(this.measvalterrain+" m", retpt, ang, 'transient');
+				gc.restoreCtx('transient');
 					
 			}
 		}
@@ -487,10 +498,16 @@ function MapControlsMgr(p_the_map) {
 	};
 
 	this.msg = function(p_msgkey) {
-		// TODO: resolver detecção automática lang
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey];
 	};
 			
@@ -510,10 +527,11 @@ function MapControlsMgr(p_the_map) {
 	this.activetoolctrl = null;
 	this.permanenttool = new Pan(MOUSEBTN_MIDDLE | MOUSEBTN_LEFT, this.the_map);
 	this.deftoolname = null;
-	this.legend_widget_name = null;
+
+	this.visibility_widget_name = null;
+	this.widgetnames_hide_during_refresh = [];
 	
 	this.mouseWheelCtrler = new mouseWheelController(this);
-	
 	this.resetTransient = function() {
 		// nada
 	};
@@ -540,8 +558,11 @@ function MapControlsMgr(p_the_map) {
 				})(this)
 			);
 		}
-		if (p_initconfig["legend_widget_name"] !== undefined && p_initconfig["legend_widget_name"] != null) {
-			this.legend_widget_name = p_initconfig["legend_widget_name"];
+		if (p_initconfig["visibility_widget_name"] !== undefined && p_initconfig["visibility_widget_name"] != null) {
+			this.visibility_widget_name = p_initconfig["visibility_widget_name"];
+		}
+		if (p_initconfig["widgetnames_hide_during_refresh"] !== undefined && p_initconfig["widgetnames_hide_during_refresh"] != null) {
+			this.widgetnames_hide_during_refresh = p_initconfig["widgetnames_hide_during_refresh"];
 		}
 		
 		if (p_initconfig["tools"] !== undefined && p_initconfig["tools"] != null) {

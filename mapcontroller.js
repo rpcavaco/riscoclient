@@ -46,7 +46,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				"NOSCLLYRS": "sem layers visíveis a esta escala",
 				"NOTUSEDLYRS": "layers configuradas mas não usadas em 'lnames':",
 				"MISSLYRS": "layers ativadas em 'lnames' mas sem configuração",
-				"NOSTYOBJ": "objecto inválido",
 				"EMPTYSTY": "popStyle: stack vazia",
 				"FSUNAVAILA": "serviço de features indisponível, erro {0} ao obter estatísticas",
 				"FSUNAVAILB": "serviço de features indisponível, erro {0} ao obter objetos dinâmicos",
@@ -73,12 +72,20 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				"IDXKEYNOTFOUND": "chave de índice {0} não encontrada: {1}",
 				"IDXBUILDMISSINGKEY": "atributo chave {0} não encontrado na construção do índice {1}",
 				"IDXBUILDMISSINGVAL": "atributo valor {0} não encontrado na construção do índice {1}"
+
 			}
 		};
 	this.msg = function(p_msgkey) {
-		//var langstr = navigator.language || navigator.userLanguage;
-		//var lang = langstr.splice(1,2);
-		var lang = "pt";
+		let langstr = navigator.language || navigator.userLanguage;
+		let lang = langstr.substring(0,2);		
+		if (this.i18nmsgs[lang] === undefined) {
+			for (let k in this.i18nmsgs) {
+				if (this.i18nmsgs.hasOwnProperty(k)) {
+					lang = k;
+					break;
+				}
+			}
+		}
 		return this.i18nmsgs[lang][p_msgkey];
 	};
 	
@@ -151,7 +158,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.prevhdims = [];
 	this.styleStack = {}; // by display layer
 	this.currentstyle = null;
-	this.altstylemode = false;
+	this.altstylemode = null;
 	this.lconfig = {};
 	this.small_scale_source = null;
 	this.globalindex = {};
@@ -177,10 +184,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	};
 	
-	//this.legend_data = new LegendData(this.lconfig);
-	this.element_stats = null;
-	this.layer_visibility = null;
-	
+	this.style_visibility = null;
 	
 	this._cancelCurrentChange = false;
 	
@@ -359,12 +363,15 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		return ret;
 	};
-	this.updateLegend = function() {
-		//console.log(this.legend_data);
-		//this.legend_data.updateLegendWidget("LEG", this.getI18NMsgFunc());
+	this.updateVisibilityWidget = function() {
+		this.style_visibility.updateWidget("LEG", this.getI18NMsgFunc());
 	};
-	this.clearLegendData = function() {
-		//this.legend_data.clear();
+	this.clearVisibilityData = function(p_typestr) {
+		if (p_typestr == "redraw") {
+			this.style_visibility.clearvis(false);
+		} else {
+			this.style_visibility.clearvis(true);
+		}
 	};
 	this.muteVectors = function(p_do_mute) {
 		if (this.dodebug) {
@@ -559,7 +566,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.refresh = function(opt_forceprepdisp, opt_centerx, opt_centery) {
 		
 		this.callSequence.init("refresh");
-		this._onChangeStart();
+		this.onChangeStart("refresh");
 
 		this._calcTransform(opt_forceprepdisp, opt_centerx, opt_centery);
 		this._prepareRefreshDraw();
@@ -609,10 +616,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {number} [opt_centerx] - (optional) force new x-coord center of map transformation.
   * @param {number} [opt_centery] - (optional) force new y-coord center of map transformation.
 */
-	this._redraw = function(opt_forceprepdisp, opt_centerx, opt_centery) {
-		this._onChangeStart();
+	this.redraw = function(opt_forceprepdisp, opt_centerx, opt_centery, opt_nottimed) {
+		this.onChangeStart("redraw");
 		this._calcTransform(opt_forceprepdisp, opt_centerx, opt_centery);
-		this._localDraw();
+		this._localDraw(opt_nottimed);
 	};
 
 	// called by pan tool mouse move method - redraw only
@@ -631,7 +638,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (Math.abs(deltascrx) > 1 || Math.abs(deltascry) > 1) {
 			this.scrDiffFromLastSrvResponse.moveCenter(deltascrx, deltascry);
 			this.moveCenter(deltax, deltay);
-			this._redraw(true);
+			this.redraw(true);
 		}
 
 	};
@@ -693,7 +700,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				this.cy = this.maxscaleview.terrain_center[1];
 				
 				if (p_redrawonly) {
-					this._redraw(false, opt_centerx, opt_centery);
+					this.redraw(false, opt_centerx, opt_centery, false);
 				} else {
 					this.refresh(false, opt_centerx, opt_centery);
 				}
@@ -703,7 +710,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		this.setScale(p_scale);
 		if (p_redrawonly) {
-			this._redraw(false, opt_centerx, opt_centery);
+			this.redraw(false, opt_centerx, opt_centery, false);
 		} else {
 			this.refresh(false, opt_centerx, opt_centery);
 		}
@@ -866,8 +873,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 
 		if (p_initconfig.terrain_center !== undefined)
-		{
-			
+		{			
 			tobj = p_initconfig["terrain_center"];
 
 			if (isNaN(parseFloat(tobj[0]))) {
@@ -880,10 +886,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.cx = parseFloat(tobj[0]);
 			this.cy = parseFloat(tobj[1]);
 			
-		} else {
-	
-			throw new Error(this.msg("NOCEN"));
-			
+		} else {	
+			throw new Error(this.msg("NOCEN"));			
 		}
 		
 		this.vectorexclusive_scales = [-1, -1];
@@ -908,10 +912,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		}
 		
-		/*if (this.legend_data) {
-			this.legend_data.setWidgetId(this.mapctrlsmgr.legend_widget_name);
-		}*/
-
 		if (p_initconfig.scalewidgets !== undefined) {
 			for (var i=0; i<p_initconfig["scalewidgets"].length; i++) {
 				this.registerScaleWidget(p_initconfig["scalewidgets"][i]);
@@ -997,6 +997,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				bot = 0; top = MapCtrlConst.MAXSCALE_VALUE;
 				
 				lc = this.lconfig[lname];
+				
+				// prepare structure for symbology usage statistics
 				if (lc.scalelimits !== undefined)
 				{
 					if (lc.scalelimits["bottom"] !== undefined && lc.scalelimits["bottom"] != null) {
@@ -1061,7 +1063,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		}
 		
-		if (notused_lnames.length >= 0) {
+		if (notused_lnames.length > 0) {
 			if (console) {
 				console.warn(this.msg("NOTUSEDLYRS") + notused_lnames.join(','));
 			}
@@ -1080,6 +1082,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		if (p_initconfig.small_scale_source) {
 			this.small_scale_source = p_initconfig.small_scale_source;
+		}
+		
+		this.style_visibility = new StyleVisibility(this, p_initconfig);
+		if (this.mapctrlsmgr) {
+			this.style_visibility.setWidgetId(this.mapctrlsmgr.visibility_widget_name);
 		}
 
 	};
@@ -1109,15 +1116,16 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	this.checkLayerDrawingCondition = function(p_layername) 
 	{
-		var ret = "OK";
+		var ret = "NOSTYLE";
 		var lyrconf = this.getLayerConfig(p_layername);
 		if (lyrconf === undefined) {
 			ret = "NOCONFIG";
-		} else if (lyrconf.style === undefined && 
-					lyrconf.condstyle === undefined &&
-					lyrconf.label === undefined) 
+		} else if (lyrconf.style !== undefined ||
+					lyrconf.condstyle !== undefined ||
+					lyrconf.label !== undefined ||
+					lyrconf.markerfunction !== undefined) 
 		{
-			ret = "NOSTYLE";
+			ret = "OK";
 		}
 		if (this.do_showLayerDrawingCondition) {
 			console.log("checkLayerDrawingCondition layer:"+p_layername+", ret:"+ret);	
@@ -1695,7 +1703,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	this.setFeatureData = function(layername, data, p_dontdraw_flag,
-							p_perattribute_style, is_inscreenspace, 
+							p_perattribute_style, p_permode_style, 
+							p_markerfunction, p_permodemarker, 
+							is_inscreenspace, 
 							in_styleflags, opt_displaylayer)
 	{
 		var pixsz, cenx, ceny, content;
@@ -1709,7 +1719,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var dodebug = false; // DEBUG
 
 		// TODO: validar SIGN
-
 		if (data.pxsz == undefined) {
 			pixsz = 1.0;
 		} else {
@@ -1758,9 +1767,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					{
 						if (!p_dontdraw_flag) {
 							try {
-								this._drawFeature(feat, p_perattribute_style, is_inscreenspace,
-									layername,
-									in_styleflags.fillStroke, dodebug, opt_displaylayer);
+								this._drawFeature(feat, p_perattribute_style, 
+									p_permode_style, p_markerfunction, 
+									p_permodemarker, is_inscreenspace,
+									layername,in_styleflags.fillStroke, 
+									dodebug, opt_displaylayer);
 							} catch(e) {
 								inerror = true;
 							}
@@ -1772,7 +1783,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 				if (!inerror && !drawn && !p_dontdraw_flag)
 				{					
-					this._drawFeature(feat, p_perattribute_style, is_inscreenspace,
+					this._drawFeature(feat, p_perattribute_style, 
+							p_permode_style, p_markerfunction, 
+							p_permodemarker, is_inscreenspace,
 							layername,
 							in_styleflags, dodebug, opt_displaylayer);
 				}
@@ -1819,8 +1832,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 						if (!p_dontdraw_flag) 
 						{
 							try {
-								this._drawFeature(feat, p_perattribute_style, is_inscreenspace, 
-										layername, in_styleflags, 
+								this._drawFeature(feat, p_perattribute_style, p_permode_style, 
+										p_markerfunction, p_permodemarker,
+										is_inscreenspace, layername, in_styleflags, 
 										dodebug, opt_displaylayer, oidkey);
 								drawn = true;
 							} catch(e) {
@@ -1836,8 +1850,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 				if (!inerror && !drawn && !p_dontdraw_flag)
 				{
-					this._drawFeature(feat, p_perattribute_style, is_inscreenspace, 
-							layername, in_styleflags,  
+					this._drawFeature(feat, p_perattribute_style, p_permode_style, 
+							p_markerfunction, p_permodemarker,
+							is_inscreenspace, layername, in_styleflags,  
 							dodebug, opt_displaylayer, oidkey);
 				}
 
@@ -2018,54 +2033,58 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	this.drawFeatureInCanvas = function(p_feature,
-			p_dostroke, p_dofill, is_inscreenspace, p_dolog, opt_displaylayer,
-			opt_forcemx)
+			p_dostroke, p_dofill, p_markerf, is_inscreenspace, p_dolog, 
+			opt_displaylayer, opt_forcemx)
 	{
+		let gtype = "NONE";
 		switch (p_feature.path_levels) 
 		{
 			case 3:
 				// TODO: fecho automático de polígnos não fechados
 				if (p_dolog) {
-					console.log(".. drawFeatureInCanvas, antes de drawMultiplePathCollection");
+					console.log(".. drawFeatureInCanvas, before drawMultiplePathCollection");
 				}
-				this.getGraphicController().drawMultiplePathCollection(p_feature.points, p_dostroke, p_dofill, 
+				gtype = this.getGraphicController().drawMultiplePathCollection(p_feature.points, p_dostroke, p_dofill, 
 					is_inscreenspace, opt_displaylayer, p_dolog, opt_forcemx);
 
 				break;
 				
 			case 2:
 				if (p_dolog) {
-					console.log(".. drawFeatureInCanvas, POLY antes drawMultiplePath");
+					console.log(".. drawFeatureInCanvas, POLY before drawMultiplePath");
 				}
-				this.getGraphicController().drawMultiplePath(p_feature.points, p_dostroke, p_dofill, 
+				gtype = this.getGraphicController().drawMultiplePath(p_feature.points, p_dostroke, p_dofill, 
 					is_inscreenspace, opt_displaylayer, p_dolog,  opt_forcemx);			
 				break;
 				
 			case 1:
 				if (p_dolog) {
-					console.log(".. drawFeatureInCanvas, LINE antes drawSimplePath");
+					console.log(".. drawFeatureInCanvas, LINE before drawSimplePath");
 				}				
-
-				this.drawSimplePath(p_feature.points, p_dostroke, false, 
-					is_inscreenspace, null, opt_displaylayer, p_dolog, opt_forcemx); 		
+				gtype = this.getGraphicController().drawSimplePath(p_feature.points, p_dostroke, p_dofill, 
+					p_markerf, is_inscreenspace, opt_displaylayer, p_dolog, opt_forcemx, this, p_feature.attrs);			
 					
 				break;
 				
 			default:
-			
 				throw new Error("Internal error in drawFeatureInCanvas");
 		
 		}
+
+		return gtype;
 	};
 	
-	this._drawFeature = function(p_featdata, p_perattribute, 
+	this._drawFeature = function(p_featdata, p_perattribute, p_permode, 
+									p_markerfunction, p_permodemarker,
 									is_inscreenspace, p_layername,
 									out_styleflags, opt_dodebug, 
 									opt_displaylayer, opt_oidkey)
 	{
-		var pac, paci, attrval;
-		var hasperattribstyle = false;
+		var pac, paci, attrval, gtype;
+		//var hasperattribstyle = false;
+		var stylechanged = false;
 		var do_forcemx = false;
+		let markerf = null;
 		
 		var displaylayer;
 		if (opt_displaylayer == null) {
@@ -2095,8 +2114,21 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				lbltitle = this.lconfig[p_layername].name;
 		}
 
-		if (p_perattribute)
-		{
+		if (p_markerfunction!=null) {
+			markerf = p_markerfunction;
+		} else if (p_permodemarker != null && this.altstylemode != null && p_permodemarker[this.altstylemode] !== undefined) {
+			markerf = p_permodemarker[this.altstylemode];
+		}
+
+		if (p_permode != null && this.altstylemode != null && p_permode[this.altstylemode] !== undefined) {
+			// Conditional styling using "mode-oriented" attributes:
+			// <mode> is a key inside "condstyle" dictionary and, 
+			// if <mode> is active (string in this.altstylemode), style attributes under <mode>
+			// are here applied to the map.
+			this.pushStyle(p_permode[this.altstylemode], out_styleflags, displaylayer);
+			stylechanged = true;	
+		} else if (p_perattribute) {
+			// Class-oriented thematic mapping, based on attribute values
 			for (var attrname in p_perattribute)
 			{
 				if (!p_perattribute.hasOwnProperty(attrname)) {
@@ -2134,27 +2166,49 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 						{
 							this.pushStyle(pac.style, out_styleflags, displaylayer);
 							//this.legend_data.add(p_layername, pac.style);
-							hasperattribstyle = true;
+							stylechanged = true;
 						}
 						paci++;
 					}
 				}
 			}
-		/*
-		} else {
-			let ds = this.getLayerDefaultStyle();
-			if (ds) {
-				//this.legend_data.add(p_layername, ds);
+		}
+		
+		//console.log(p_layername + " -- levels:" + p_featdata.path_levels+" null mrkr:"+(markerf==null));
+		
+
+		if ((this.currentStyleExists(displaylayer) && 
+			(out_styleflags.stroke || out_styleflags.fill)) || 
+			markerf!=null )
+		{
+			/*
+			let s = this.currentstyle;
+			if (s["_index"] !== undefined) {
+				console.log(s);
+			}*/
+			
+			/*
+			if (p_layername == "GOU_OVER") {
+				console.log(p_layername);
+				console.log(p_featdata.points);
+				console.log("p_levels: "+p_featdata.path_levels);
 			}
 			*/
-		}
+			
+			//console.log(p_layername + " " + p_featdata.path_levels);
 
-		if (!this.currentStyleIsDefault(displaylayer) && (out_styleflags.stroke || out_styleflags.fill))
-		{
-			 this.drawFeatureInCanvas(p_featdata,
-							out_styleflags.stroke, out_styleflags.fill, 
-							is_inscreenspace, opt_dodebug, 
-							displaylayer, do_forcemx);
+			
+			gtype = this.drawFeatureInCanvas(p_featdata, out_styleflags.stroke, 
+				out_styleflags.fill, markerf, 
+				is_inscreenspace, opt_dodebug, 
+				displaylayer, do_forcemx);
+				
+			//console.log(gtype);
+			if (this.currentstyle!=null) {
+				this.style_visibility.incrementElemStats(gtype, this.currentstyle);
+			}
+							
+			//let currstyle = this.styleStack[displaylayer][this.styleStack[displaylayer].length-1]
 
 			if (opt_dodebug) {
 				console.log("  .. out_styleflags:"+JSON.stringify(out_styleflags)+" strokestyle:"+this.getGraphicController().getStrokeStyle('temporary'));
@@ -2162,8 +2216,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 
 		}
+		
+		//console.log("stylechanged:"+stylechanged);
 
-		if (hasperattribstyle) {
+		if (stylechanged) {
 			this.popStyle(out_styleflags, displaylayer);
 		}
 
@@ -2172,39 +2228,44 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	
 	
 	// TODO: FALTA DOC
-	this.drawCircle = function(p_cx, p_cy, p_radius, p_stroke, p_fill, is_inscreenspace, opt_styleobj, opt_displaylayer) {
+	this.drawCircle = function(p_cx, p_cy, p_radius, is_inscreenspace, p_styleobj, opt_displaylayer) {
 
-		if (opt_styleobj) {
-			this.getGraphicController().saveCtx(opt_displaylayer);
-			this.getGraphicController().interpretStyleChgObj(opt_styleobj, opt_displaylayer);
-		}
+		let styleflags = {};
+	
+		this.getGraphicController().saveCtx(opt_displaylayer);
+		this.applyStyle(p_styleobj, styleflags, opt_displaylayer);
 		
-		this.getGraphicController().drawCircle(p_cx, p_cy, p_radius, p_stroke, p_fill, is_inscreenspace, opt_displaylayer);
+		this.getGraphicController().drawCircle(p_cx, p_cy, p_radius, styleflags.stroke, styleflags.fill, is_inscreenspace, opt_displaylayer);
 
-		if (opt_styleobj) {
-			this.getGraphicController().restoreCtx(opt_displaylayer);
-		}
-
+		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
 		
-	this.drawCrossHairs = function(p_x, p_y, p_stroke, p_fill, is_inscreenspace, opt_displaylayer) {
-		this.getGraphicController().drawCrossHairs(p_x, p_y, p_stroke, p_fill, is_inscreenspace, opt_displaylayer);		
+	this.drawCrossHairs = function(p_x, p_y, p_size, is_inscreenspace, p_styleobj, opt_displaylayer) {
+
+		let styleflags = {};
+	
+		this.getGraphicController().saveCtx(opt_displaylayer);
+		this.applyStyle(p_styleobj, styleflags, opt_displaylayer);
+		
+		this.getGraphicController().drawCrossHairs(p_x, p_y, styleflags.stroke, styleflags.fill, is_inscreenspace, opt_displaylayer);		
+
+		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
 
 
-	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
-					is_inscreenspace, opt_styleobj, opt_displaylayer, dolog, do_forcemx) {
-		if (opt_styleobj) {
-			this.getGraphicController().saveCtx(opt_displaylayer);
-			this.getGraphicController().interpretStyleChgObj(opt_styleobj, opt_displaylayer);
-		}
+	this.drawSimplePath = function(p_points,   
+					is_inscreenspace, p_styleobj, opt_displaylayer, dolog, do_forcemx) {
 
-		this.getGraphicController().drawSimplePath(p_points, p_stroke, p_fill,  
-					is_inscreenspace, opt_displaylayer, dolog, do_forcemx);
+		let styleflags = {};
+	
+		this.getGraphicController().saveCtx(opt_displaylayer);
+		this.applyStyle(p_styleobj, styleflags, opt_displaylayer);
 
-		if (opt_styleobj) {
-			this.getGraphicController().restoreCtx(opt_displaylayer);
-		}
+		let markerfunc = null;
+		this.getGraphicController().drawSimplePath(p_points, styleflags.stroke, styleflags.fill,  
+					markerfunc, is_inscreenspace, opt_displaylayer, dolog, do_forcemx);
+
+		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
 
 
@@ -2219,29 +2280,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	 * If *opt_style* carries a preconfigured style, this one is applied
 	 * instead of the one read from current layer config.
 	 * 
-	 * * out_styleflags - out parameter -- array of two, containing two 
-	 *    flags -- first indicates style has stroking parameters, 
-	 *    second indicates the presence of fill parameters. 
-	 * 
-	 * * out_return - out parameter -- array of three elements:
-	 * 		- first: boolean indicating style as been applied
-	 * 		- second: per attribute styling config object
-	 * 		- legenddata: object of type legendData summary of symbology 
-	 * 			applications
-	 * 
-	 * * out_return - out parameter -- array of three elements:
-	 * 		- first: boolean indicating style as been applied
-	 * 		- second: per attribute styling config object
-	 * 		- legenddata: object of type legendData summary of symbology 
-	 * 			applications
-	 * 
-	 * * out_legenddata - out parameter -- object of type legendData 
-	 * 		summary of symbology applications
+	 * TODO -- COMPLETAR
 	 * */
 	
-	//this.activateLayerStyle = function(layername, out_styleflags, 
+	 // this.activateLayerStyle = function(layername, out_styleflags, 
 		//		out_return, opt_displaylayer, opt_style)
-	// this.activateLayerStyle = function(layername, out_styleflags, 
+	 // this.activateLayerStyle = function(layername, out_styleflags, 
 		//		out_return, opt_displaylayer)
 	this.activateLayerStyle = function(layername, out_return_obj, 
 				opt_displaylayer, opt_style)
@@ -2254,11 +2298,21 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 
 		out_return_obj.fillStroke = {
-				stroke: true,
+				stroke: false,
 				fill: false
 		};
 		out_return_obj.hasstyle = false;
 		out_return_obj.perattribute = null;
+		out_return_obj.permode = null;
+		out_return_obj.markerfunction = null;
+		out_return_obj.permodemarker = null;
+		
+		if (this.lconfig[layername]["markerfunction"] !== undefined && this.lconfig[layername]["markerfunction"] != null) {
+			out_return_obj.markerfunction = this.lconfig[layername]["markerfunction"];
+		}
+		if (this.lconfig[layername]["permodemarker"] !== undefined && this.lconfig[layername]["permodemarker"] != null) {
+			out_return_obj.permodemarker = this.lconfig[layername]["permodemarker"];
+		}
 
 		if (opt_style)
 		{
@@ -2273,10 +2327,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				return ret;
 			}
 			
-			if (this.altstylemode && this.lconfig[layername]["altstyle"] !== undefined) {
-				out_return_obj.hasstyle = true;
-				this.pushStyle(this.lconfig[layername]["altstyle"], out_return_obj.fillStroke, opt_displaylayer);
-			} else if (this.lconfig[layername]["style"] !== undefined) {
+			if (this.lconfig[layername]["style"] !== undefined) {
 				 // TODO: introduzir scaledependent e background depedent
 				out_return_obj.hasstyle = true;
 				this.pushStyle(this.lconfig[layername]['style'], out_return_obj.fillStroke, opt_displaylayer);
@@ -2284,12 +2335,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				out_return_obj.hasstyle = true;
 				this.pushStyle(this.lconfig[layername]["condstyle"]["default"], out_return_obj.fillStroke, opt_displaylayer);
 				out_return_obj.perattribute = this.lconfig[layername]["condstyle"]["perattribute"];
-			}
-			
-			/*
-			if (out_return_obj.hasstyle && this.lconfig[layername]["altstyle"] !== undefined && this.lconfig[layername]["altstyle"] != null ) {
-				out_return_obj.altstyle = this.lconfig[layername]["altstyle"]
-			}*/
+				out_return_obj.permode = this.lconfig[layername]["condstyle"]["permode"];
+			}			
 		}
 
 		return ret;
@@ -2360,8 +2407,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				throw new Error("drawSingleFeature, NULL feature data, key:"+p_objid);
 				return;
 			}
-			this._drawFeature(feat, out_return.perattribute, is_inscreenspace,
-								p_layername,
+			this._drawFeature(feat, out_return.perattribute, out_return.permode, 
+								out_return.markerfunction, out_return.permodemarker,
+								is_inscreenspace, p_layername,
 								out_return.fillStroke, dodebug,  
 								opt_displaylayer, p_objid);
 		}
@@ -2485,7 +2533,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					throw new Error("drawLyr -- "+this.msg("XXFEATSBYCALL"));
 				}
 
-				this._drawFeature(ldata[ci], out_return.perattribute, is_inscreenspace, 
+				this._drawFeature(ldata[ci], out_return.perattribute, 
+									out_return.permode, out_return.markerfunction , 
+									out_return.permodemarker, is_inscreenspace, 
 									layername, out_return.fillStroke,
 									dodebug, opt_displaylayer, ci);
 				ci++;
@@ -2508,8 +2558,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				}
 
 				this._drawFeature(ldata[oidkey], out_return.perattribute, 
-									is_inscreenspace, layername, out_return.fillStroke, 
-									dodebug, opt_displaylayer, oidkey);
+						out_return.permode, out_return.markerfunction , 
+						out_return.permodemarker, is_inscreenspace, layername, 
+						out_return.fillStroke, dodebug, opt_displaylayer, oidkey);
 				if (maxallowed_duration > 0)
 				{
 					if (maxallowed_duration > 0 ) 
@@ -2643,12 +2694,18 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 										if (!p_self.activateLayerStyle(lname, activateReturn)) {
 											dontdraw = true;
 										}
+										/*if (!p_self.style_visibility.isLyrTOCVisibile(lname)) {
+											dontdraw = true;
+										}*/
 
 										try {
-											p_self.setFeatureData(lname, respdata, dontdraw, activateReturn.perattribute, inscreenspace, activateReturn.fillStroke, legend_attrnames);
+											p_self.setFeatureData(lname, respdata, dontdraw, 
+											activateReturn.perattribute, activateReturn.permode, 
+											activateReturn.markerfunction, activateReturn.permodemarker, 
+											inscreenspace, activateReturn.fillStroke, legend_attrnames);
 										} catch(e) {
 											console.log(".. error in _sendReadFeatureRequest, setFeatureData");
-											console.log(e);
+											console.trace(e);
 											throw e;
 										}
 
@@ -2662,15 +2719,15 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 											}
 										} catch(e) {
 											console.log(e);
-											p_self._onRetrieveFinish('error 1');
+											p_self.onChangeFinish('error 1');
 										}
 									}
 									else
 									{
 										if (this.responseText.length < 1) {
-											p_self._onRetrieveFinish('error '+this.status+', void response');									
+											p_self.onChangeFinish('error '+this.status+', void response');									
 										} else {										
-											p_self._onRetrieveFinish('error '+this.status);
+											p_self.onChangeFinish('error '+this.status);
 										}
 										var resp = this.responseText.toLowerCase();
 										if (resp.indexOf("unavailable") >= 0 || resp.indexOf("indispon") >= 0) {
@@ -2719,7 +2776,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 											dontdraw = true;
 										}
 
-										p_self.setFeatureData(lname, respdata, dontdraw, perattribute, inscreenspace, styleflags);
+										p_self.setFeatureData(lname, respdata, dontdraw, 
+										activateReturn.perattribute, activateReturn.permode,
+										activateReturn.markerfunction, activateReturn.permodemarker, 
+										inscreenspace, styleflags);
 										p_self.drawLyr(lname, true, styleflags, respdata)
 
 										if (activateReturn.hasstyle) {
@@ -2730,12 +2790,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 											p_self._retrieveFromServer(opt_filterdata);
 										} catch(e) {
 											console.log(e);
-											p_self._onRetrieveFinish('error 3');
+											p_self.onChangeFinish('error 3');
 										}
 									}
 									else
 									{
-										p_self._onRetrieveFinish('error 4 len:'+this.responseText.length);
+										p_self.onChangeFinish('error 4 len:'+this.responseText.length);
 										var resp = this.responseText.toLowerCase();
 										if (resp.indexOf("unavailable") >= 0 || resp.indexOf("indispon") >= 0) {
 											this.showWarn(String.format(p_self.msg("FSUNAVAILC"), this.status));
@@ -2761,7 +2821,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	// 	 p_sclval: current scale value
 	// 	 opt_objforlatevectordrawing: object containing attributes to control vector drawing ocurring after the rasters, here retrieved, are fully drawn
 	
-	this._retrieveRastersFromServer = function(p_sclval, p_objforlatevectordrawing)
+	this._retrieveRastersFromServer = function(p_sclval, p_objforlatevectordrawing, b_vectorsexpected)
 	{
 		// layers raster
 		var lconfig = this.lconfig;
@@ -2796,6 +2856,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.callSequence.addMsg("_retrieveRastersFromServer", _inv, "raster specs DON'T exist");
 			this.clearImageData(null);
 		}
+		
+		if (!b_vectorsexpected) {
+			this.onChangeFinish("retrieverasters")
+		}
+		
 	};
 
 	this._retrieveVectorsFromServer = function(opt_filterdata)
@@ -2812,7 +2877,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (!this.rcvctrler.nextCurrLayer()) 
 				{
 					this.callSequence.addMsg("_retrieveVectorsFromServer", _inv, "next current layer: NONE");
-					this._onRetrieveFinish('normal');
+					this.onChangeFinish('normal');
 					break;
 				} else if (this.activeserver && this.fanningChunks.length == 0) {
 
@@ -3187,7 +3252,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					}
 				} catch(e) {
 					console.log(e);
-					this._onRetrieveFinish('error 5');
+					this.onChangeFinish('error 5');
 				}
 			}
 		} else {
@@ -3198,7 +3263,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				}
 			} catch(e) {
 				console.log(e);
-				this._onRetrieveFinish('error 6');
+				this.onChangeFinish('error 6');
 			}
 
 		}
@@ -3246,7 +3311,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				{
 					"refresh_vectors": refresh_vectors,
 					"filteringdata": opt_filterdata
-				}
+				},
+				(refresh_vectors && !this.muted_vectors)
 			);
 		}
 		else if (refresh_vectors && !this.muted_vectors) 
@@ -3268,13 +3334,18 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
  */
 
-	this.localDrawRasters = function(opt_force)
+	this.localDrawRasters = function(opt_force, opt_nottimed)
 	{
 		var i=0, rasternames = [];
 		this.rcvctrler.getRasterNames(rasternames);
 		
-
 		this.clear(MapCtrlConst.CLEARMODE_RASTER);
+		let delay;
+		if (opt_nottimed) {
+			delay = -1;
+		} else {
+			delay = MapCtrlConst.ACCPTBLE_LYRREDRAW_DELAY_MSEC;
+		}
 		
 		for (var rnameb in this.images) 
 		{
@@ -3298,7 +3369,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				}
 				if (this.checkLayerVisibility(rasternames[i]))
 				{
-					if (this._drawRasterLyr(rasternames[i], MapCtrlConst.ACCPTBLE_LYRREDRAW_DELAY_MSEC, opt_force)) {
+					if (this._drawRasterLyr(rasternames[i], delay, opt_force)) {
 						if (this.drawnrasters.indexOf(rasternames[i]) < 0) {
 							this.drawnrasters.push(rasternames[i]);
 						}
@@ -3313,12 +3384,19 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	}
 	
 	// p_maxallowed_duration -- limite tempo disponível, -1 ou null desliga
-	this.localDrawFeatures = function(do_clear)
+	this.localDrawFeatures = function(do_clear, opt_nottimed)
 	{
 		var lname, styleflags = [];
 		var t0=0, t1=0;
 		if (do_clear) {
 			this.clear(MapCtrlConst.CLEARMODE_VECTOR);
+		}
+		
+		let delay;
+		if (opt_nottimed) {
+			delay = -1;
+		} else {
+			delay = MapCtrlConst.ACCPTBLE_LYRREDRAW_DELAY_MSEC;
 		}
 
 		t0 = Date.now();
@@ -3329,11 +3407,18 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (this._cancelCurrentChange) {
 					break;
 				}
+				
+				// avoid drawing layers toggled invisible in TOC
+				if (!this.style_visibility.isLyrTOCVisibile(this.lnames[li])) {
+					continue;
+				}
 
-				this.drawLyr(this.lnames[li], true, styleflags, MapCtrlConst.ACCPTBLE_LYRREDRAW_DELAY_MSEC);
-				t1 = Date.now();
-				if ((t1- t0) > MapCtrlConst.ACCPTBLE_LYRREDRAW_DELAY_MSEC) {
-					break;
+				this.drawLyr(this.lnames[li], true, styleflags, delay);
+				if (delay > 0) {
+					t1 = Date.now();
+					if ((t1- t0) > delay) {
+						break;
+					}
 				}
 			}
 		} catch(e) {
@@ -3369,17 +3454,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	};
 
-	this._localDraw = function() {
+	this._localDraw = function(opt_nottimed) {
 		
 		this.drawnrasters.length = 0;
 
 		this._cancelCurrentChange = false;
 		
 		try {
-			this.localDrawRasters(false);
+			this.localDrawRasters(false, opt_nottimed);
 			// _cancelCurrentChange can be set during draw raster task
 			if (!this._cancelCurrentChange) {
-				this.localDrawFeatures(true);
+				this.localDrawFeatures(true, opt_nottimed);
 			}
 			// TODO: repor o desenho de Labels -- não seguia o rato durante o pan
 			//this.drawLabels();
@@ -3390,19 +3475,42 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this._onDrawFinish('localdraw');
 	};
 	
-	this._onChangeStart = function() {
-		this.clearLegendData();
+	this.onChangeStart = function(p_typestr) {
+		
+		this.clearVisibilityData(p_typestr);
+		
+		if (this.mapctrlsmgr) {
+			let wdg, wdgname;
+			for (let i=0; i<this.mapctrlsmgr.widgetnames_hide_during_refresh.length; i++) {
+				wdgname = this.mapctrlsmgr.widgetnames_hide_during_refresh[i];
+				wdg = document.getElementById(wdgname);
+				if (wdg) {
+					wdg.style.visibility = "hidden";
+				}
+			}
+		}
 	}
 
-	this._onRetrieveFinish = function(p_type, opt_displaylayer)
+	this.onChangeFinish = function(p_type, opt_displaylayer)
 	{
 		if (p_type != 'error') {
 			this.drawLabels(this.getScale(), opt_displaylayer);
 		}
 		this._onDrawFinish(p_type);
 		this.pubScaleVal();
-		
-		this.updateLegend();
+
+		if (this.mapctrlsmgr) {
+			let wdg, wdgname;
+			for (let i=0; i<this.mapctrlsmgr.widgetnames_hide_during_refresh.length; i++) {
+				wdgname = this.mapctrlsmgr.widgetnames_hide_during_refresh[i];
+				wdg = document.getElementById(wdgname);
+				if (wdg) {
+					wdg.style.visibility = "visible";
+				}
+			}
+		}
+				
+		this.updateVisibilityWidget();
 	};
 
 	this._onDrawFinish = function(p_item)
@@ -3500,119 +3608,19 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 // TODO - parâmetros de sobreamento não podem ser aplicados ao ctx, tem de despoletar o desenho de
 // um segundo texto desviado 
+	// APPLY STYLE NO CANVAS, ISTO CHAMA ESSA NOVA FUNC
 
 	this.applyStyle = function(p_styleobj, out_styleflags, opt_displaylayer)
 	{
-		out_styleflags.length = 0;
-		out_styleflags.stroke = false;
-		out_styleflags.fill = false;
-		var foundattrs = [];
-
-		if (typeof p_styleobj == 'undefined') {
-			throw new Error("applyStyle "+this.msg("NOSTYOBJ"));
+		let gc = this.getGraphicController();
+		if (gc == null) {
+			throw new Error("applyStyle: no active graphic controller");
 		}
-		for (var attr in p_styleobj)
-		{
-			if (!p_styleobj.hasOwnProperty(attr)) {
-				continue;
-			}
-			if (foundattrs.indexOf(attr) < 0) {
-				foundattrs.push(attr);
-			}
-			switch (attr) {
-				case "strokecolor":
-					this.getGraphicController().setStrokeStyle(p_styleobj[attr], opt_displaylayer);
-					out_styleflags.stroke = true;
-					break;
-				case "fillcolor":
-					this.getGraphicController().setFillStyle(p_styleobj[attr], opt_displaylayer);
-					out_styleflags.fill = true;
-					break;
-				case "linewidth":
-					this.getGraphicController().setLineWidth(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "linejoin":
-					this.getGraphicController().setLineJoin(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "linecap":
-					this.getGraphicController().setLineCap(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "font":
-					this.getGraphicController().setFont(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "align":
-					this.getGraphicController().setTextAlign(p_styleobj[attr].toLowerCase(), opt_displaylayer);
-					break;
-				case "baseline":
-					this.getGraphicController().setBaseline(p_styleobj[attr].toLowerCase(), opt_displaylayer);
-					break;
-				case "shadowcolor":
-					this.getGraphicController().setShadowColor(p_styleobj[attr].toLowerCase(), opt_displaylayer);
-					break;
-				case "shadowoffsetx":
-					this.getGraphicController().setShadowOffsetX(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "shadowoffsety":
-					this.getGraphicController().setShadowOffsetY(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "shadowblur":
-					this.getGraphicController().setShadowBlur(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "bgstyle":
-					this.getGraphicController().setLabelBackground(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "marker":
-					this.getGraphicController().setMarker(p_styleobj[attr], opt_displaylayer);
-					break;
-				case "markersize":
-					this.getGraphicController().setMarkerSize(p_styleobj[attr], opt_displaylayer);
-					break;
-			}
-		}
-		if (out_styleflags.stroke === undefined ||  out_styleflags.fill === undefined || (!out_styleflags.stroke && !out_styleflags.fill)) {
-			throw new Error("applyStyle "+this.msg("NOTHDRAW"));
-		}
-		// valores default
-		if (foundattrs.indexOf("linewidth") < 0) {
-			this.getGraphicController().setLineWidth(1, opt_displaylayer);
-		}
-		if (foundattrs.indexOf("linejoin") < 0) {
-			this.getGraphicController().setLineJoin("round", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("linecap") < 0) {
-			this.getGraphicController().setLineJoin("butt", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("font") < 0) {
-			this.getGraphicController().setFont("10px sans-serif", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("align") < 0) {
-			this.getGraphicController().setTextAlign("center", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("baseline") < 0) {
-			this.getGraphicController().setBaseline("alphabetic", opt_displaylayer);
-		}
-
-		if (foundattrs.indexOf("shadowcolor") < 0) {
-			this.getGraphicController().setShadowColor("rgba(0,0,0,0)", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("shadowoffsetx") < 0) {
-			this.getGraphicController().setShadowOffsetX(0, opt_displaylayer);
-		}
-		if (foundattrs.indexOf("shadowoffsety") < 0) {
-			this.getGraphicController().setShadowOffsetY(0, opt_displaylayer);
-		}
-		if (foundattrs.indexOf("shadowblur") < 0) {
-			this.getGraphicController().setShadowBlur(0, opt_displaylayer);
-		}
-
-		if (foundattrs.indexOf("marker") < 0) {
-			this.getGraphicController().setMarker("square", opt_displaylayer);
-		}
-		if (foundattrs.indexOf("markersize") < 0) {
-			this.getGraphicController().setMarkerSize(1, opt_displaylayer);
-		}
-
+		
+		gc.applyStyle(p_styleobj, out_styleflags, opt_displaylayer);
+		
 	};
+	
 	this.pushStyle = function(p_styleobj, out_styleflags, opt_displaylayer) {
 		if (typeof p_styleobj == 'undefined') {
 			throw new Error("pushStyle "+this.msg("NOSTYOBJ"));
@@ -3664,9 +3672,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		// alterar ctx
 		this.applyStyle(this.currentstyle, out_styleflags, opt_displaylayer);
 	};
-	this.currentStyleIsDefault = function(opt_displaylayer)
+	this.currentStyleExists = function(opt_displaylayer)
 	{
-		var displaylayer;
+		var displaylayer, ret = false;
 
 		if (opt_displaylayer == null) {
 			displaylayer = 'base';
@@ -3674,11 +3682,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			displaylayer = opt_displaylayer;
 		}
 
-		if (this.styleStack[displaylayer] === undefined) {
-			this.styleStack[displaylayer] = [];
+		if (this.styleStack[displaylayer] !== undefined && this.styleStack[displaylayer] != null) {
+			ret = (this.styleStack[displaylayer].length > 0);
 		}
-
-		return (this.styleStack[displaylayer].length == 0);
+		
+		return ret;
 	};
 
 	//this.grController = new CanvasController(p_elemid, this);
@@ -3745,13 +3753,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			while (oidscol[i] !== undefined && oidscol[i] != null)
 			{
 				gid = oidscol[i];
-
 				this.drawSingleFeature(p_layername, gid, in_inscreenspace, 
 						opt_displaylayer, opt_style, opt_do_debug);
 				i++;
 			}
 		}
-
 	};
 	
 	this.getGlobalIndex = function(p_index_name) {
@@ -3793,7 +3799,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var tiles = cols * rows;
 		
 		this.imagecounters.init(p_rasterlayername, tiles);
-
 		this.callSequence.addMsg("_getMapTiles", _inv, String.format("minrow: {0}, mincol: {1}, maxrow: {2}, maxcol: {3}",minrow,mincol,maxrow,maxcol));
 		
 		var cnt = 0;
