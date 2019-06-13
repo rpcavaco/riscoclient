@@ -11,6 +11,26 @@
  * 		spindex.js
  */
 
+var toggle_found = false;
+
+// debounced resize
+function resizeExec(p_mapctrl, opt_msg) {
+	let timerId = null;
+	let waitPeriodMsec = 200;
+	return function(e) {
+		if (opt_msg) {
+			console.log(opt_msg);
+		}
+		if (timerId != null) {
+			window.clearTimeout(timerId);
+		}
+		timerId = window.setTimeout(function(e) {
+			p_mapctrl.refresh(true);
+			timerId = null;
+		}, waitPeriodMsec);
+	}
+}
+	
 /** 
   * Main object to control map display
   * @param {string} p_elemid - The ID of HTML container object to recieve the map display.
@@ -45,7 +65,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				"NOVECTLYRS": "configuração de mapcontroller sem layers vetoriais ativas (lnames vazio)",
 				"NOSCLLYRS": "sem layers visíveis a esta escala",
 				"NOTUSEDLYRS": "layers configuradas mas não usadas em 'lnames':",
+				"NOTCONFIGEDLYRS": "layers sem configuração:",
+				"NOTSTYLEDLYRS": "layers sem estilo (colocar onlydata=true para servir apenas dados):",
 				"MISSLYRS": "layers ativadas em 'lnames' mas sem configuração",
+				"MISSSMALLSRCCFG": "layer indicada para vista de escala menor (small_scale_source) não tem configuração",
+				"MISSSMALLSRCSCALE": "layer indicada para vista de escala menor tem de ter limite mínimo de escala de visualização definido ('scalelimits' -> 'bottom')",
 				"EMPTYSTY": "popStyle: stack vazia",
 				"FSUNAVAILA": "serviço de features indisponível, erro {0} ao obter estatísticas",
 				"FSUNAVAILB": "serviço de features indisponível, erro {0} ao obter objetos dinâmicos",
@@ -89,7 +113,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return this.i18nmsgs[lang][p_msgkey];
 	};
 	
-	this.dodebug = true;
+	this.dodebug = false;
 	
 	this.callSequence = new CallSequence(p_debug_callsequence);
 
@@ -161,6 +185,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.altstylemode = null;
 	this.lconfig = {};
 	this.small_scale_source = null;
+	this.small_scale_limit = null;
 	this.globalindex = {};
 	this.mapname = null;
 	this.bgcolor = null;
@@ -297,11 +322,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.clearTraceFeatures = function() {
 		this.trace_oids.length = 0;
 	};
-	this.pubScaleVal = function() {
+	this.pubScaleVal = function(opt_scale) {
+		var scl;
+		if (opt_scale) {
+			scl = opt_scale;
+		} else {
+			scl = this.getScale();
+		}
 		for (var i=0; i<this.scalewidgetids.length; i++) {
 			var wid = document.getElementById(this.scalewidgetids[i]);
 			if (wid) {
-				wid.innerHTML = "1:"+parseInt(this.getScale());
+				wid.innerHTML = "1:"+parseInt(scl);
 			}
 		}
 	};
@@ -323,8 +354,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			vscale = p1_scale;
 		}
 		
-		if (vscale < 100) {
+		if (vscale < 250) {
 			vscale = parseInt(Math.round(vscale));
+		} else if (vscale < 500) {
+			vscale = parseInt(Math.round(vscale / 10.0)) * 10.0;
 		} else if (vscale < 1000) {
 			vscale = parseInt(Math.round(vscale / 10.0)) * 10.0;
 		} else if (vscale < 10000) {
@@ -480,6 +513,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.m = 1.0 / k;
 		
 		this.getGraphicController().prepDisplay(opt_forceprepdisp);
+		
+		if (this.spatialindexer != null) {
+			this.spatialindexer.resize();
+		}
 		
 		var cdims = this.getGraphicController().getCanvasDims();
 
@@ -749,7 +786,19 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			throw new Error("moveCenter: new this.cy is NaN");
 		}
 	};
-
+	
+	this.setZoomTMSLevel = function(p_zoomlvl, opt_cx, opt_cy) {
+		let sv = scaleValueFromTMSZoomLevel(p_zoomlvl);
+		if (sv == null) {
+			throw new Error("setZoomXYTMSLevel -- no scale value for level:"+p_zoomlvl);
+		}
+		if (opt_cx!=null && opt_cy!=null) {
+			this.refreshFromScaleAndCenter(sv, opt_cx, opt_cy);
+		} else {
+			this.changeCenter(p_centerx, p_centery);
+		}
+	};
+	
 	this.checkPointInsideMap = function(p_terrpt, opt_paddingquot) 
 	{
 		var ret = false;
@@ -871,11 +920,21 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (p_initconfig.maxscaleview) {
 			this.maxscaleview = new maxScaleView(p_initconfig.maxscaleview.scale, p_initconfig.maxscaleview.terrain_center);
 		}
-
-		if (p_initconfig.terrain_center !== undefined)
-		{			
-			tobj = p_initconfig["terrain_center"];
-
+		
+		let tc = getCookie("terrain_center");
+		if (tc.length < 1) {
+			if (p_initconfig.terrain_center !== undefined)
+			{			
+				tobj = p_initconfig["terrain_center"];
+				
+			} else {	
+				throw new Error(this.msg("NOCEN"));			
+			}
+		} else {
+			tobj = tc.split("_");
+		}
+		
+		if (tobj) {
 			if (isNaN(parseFloat(tobj[0]))) {
 				throw new Error(this.msg("ERRCEN0")+ ":" + tobj[0]);
 			}
@@ -975,13 +1034,15 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		
 		let notused_lnames = [];
+		let noconfig_lnames = [];
+		let nostyle_lnames = [];
 		let foundlnames = [];
-
+		
 		// Layer (vector) config
 		if (p_initconfig["lconfig"] !== undefined) {
 			
 			this.lconfig = p_initconfig["lconfig"];
-			var lc, bot, top;
+			var lc, bot, top, dc;
 			for (var lname in this.lconfig)
 			{
 				if (!this.lconfig.hasOwnProperty(lname)) {
@@ -992,6 +1053,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 				if (this.lnames.indexOf(lname) < 0 && this.lconfig[lname]['rasterbaseurl'] === undefined) {
 					notused_lnames.push(lname);
+				}
+				
+				dc = this.checkLayerDrawingCondition(lname);
+				if (dc == "NOCONFIG") {
+					noconfig_lnames.push(lname);
+				} else {
+					if (dc != "OK" && this.lconfig[lname]['rasterbaseurl'] === undefined && (this.lconfig[lname]['onlydata'] === undefined || !this.lconfig[lname]['onlydata'])) {
+						if (dc == "NOSTYLE") {
+							nostyle_lnames.push(lname);
+						}
+					}
 				}
 								
 				bot = 0; top = MapCtrlConst.MAXSCALE_VALUE;
@@ -1069,6 +1141,18 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		}
 
+		if (noconfig_lnames.length > 0) {
+			if (console) {
+				console.warn(this.msg("NOTCONFIGEDLYRS") + noconfig_lnames.join(','));
+			}
+		}
+
+		if (nostyle_lnames.length > 0) {
+			if (console) {
+				console.warn(this.msg("NOTSTYLEDLYRS") + nostyle_lnames.join(','));
+			}
+		}
+
 		let miss_lyrs = [];
 		for (var lni=0; lni<this.lnames.length; lni++) {
 			if (foundlnames.indexOf(this.lnames[lni]) < 0) {
@@ -1082,6 +1166,16 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		if (p_initconfig.small_scale_source) {
 			this.small_scale_source = p_initconfig.small_scale_source;
+			var lc = this.getLayerConfig(this.small_scale_source);
+			if (lc) {
+				if (lc.scalelimits !== undefined && lc.scalelimits.bottom !== undefined) {
+					this.small_scale_limit = lc.scalelimits.bottom;
+				} else {
+					throw new Error(this.msg("MISSSMALLSRCSCALE"));
+				}
+			} else {
+				throw new Error(this.msg("MISSSMALLSRCCFG"));
+			}
 		}
 		
 		this.style_visibility = new StyleVisibility(this, p_initconfig);
@@ -1133,7 +1227,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return ret;
 	}
 	
-	this.getDrawableLayerList = function(out_drawable_layer_lst, opt_alllayers_returns_emptylist) 
+	this.getDrawableLayerList = function(out_drawable_layer_lst, opt_alllayers_returns_emptylist, opt_include_onlydata) 
 	{
 		out_drawable_layer_lst.length = 0;
 		var scale_vlst = [];
@@ -1153,11 +1247,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var i = 0;
 		while (scale_vlst[i] !== undefined && scale_vlst[i] != null) 
 		{
-			if (this.checkLayerDrawingCondition(scale_vlst[i]) == "OK") {
+			if (this.lconfig[scale_vlst[i]].onlydata !== undefined && this.lconfig[scale_vlst[i]].onlydata) {
 				out_drawable_layer_lst.push(scale_vlst[i]);
+			} else {		
+				if (this.checkLayerDrawingCondition(scale_vlst[i]) == "OK") {
+					out_drawable_layer_lst.push(scale_vlst[i]);
+				}
 			}
 			i++;
 		}
+
+		//console.log(out_drawable_layer_lst);
 
 	};
 	
@@ -1894,6 +1994,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.clearTemporary = function() {
 		this.getGraphicController().clearDisplayLayer('temporary');
 	};
+	this.clearDispLayer = function(p_displayername) {
+		this.getGraphicController().clearDisplayLayer(p_displayername);
+	};
 
 	this.clear = function(p_mode)
 	{
@@ -1961,7 +2064,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			// Draw all rasters in the end
 			//this.localDrawRasters(-1);
 			if (p_objforlatevectordrawing.refresh_vectors)	{						
-				this._executeVectorRefreshDraw(p_objforlatevectordrawing.filteringdata);
+				this._executeVectorRefreshDraw(MapCtrlConst.DEFAULT_USE_SCREEN_COORD_SPACE, p_objforlatevectordrawing.filteringdata);
 			}
 		}
 	};
@@ -1997,7 +2100,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (doLocalDraw) {
 			this.localDrawRasters(false);
 			if (pp_objforlatevectordrawing.refresh_vectors)	{						
-				this._executeVectorRefreshDraw(pp_objforlatevectordrawing.filteringdata);
+				this._executeVectorRefreshDraw(MapCtrlConst.DEFAULT_USE_SCREEN_COORD_SPACE, pp_objforlatevectordrawing.filteringdata);
 			}
 		}
 
@@ -2292,6 +2395,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	{
 		'use strict';
 		var ret = true;
+		var p_scale_val, selstyle=null,  dep_rendering_scaleval = null;
+		var this_has_bgdependent = false;
 		
 		if (this.lconfig[layername] === undefined || this.lconfig[layername] == null) {
 			throw new Error("activateLayerStyle -- layer not configured:" + layername);
@@ -2301,7 +2406,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				stroke: false,
 				fill: false
 		};
-		out_return_obj.hasstyle = false;
+		// antigamente hasstyle
+		out_return_obj.activestyle = null;
 		out_return_obj.perattribute = null;
 		out_return_obj.permode = null;
 		out_return_obj.markerfunction = null;
@@ -2316,7 +2422,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		if (opt_style)
 		{
-			out_return_obj.hasstyle = true;
+			out_return_obj.activestyle = opt_style;
 			this.pushStyle(opt_style, out_return_obj.fillStroke, opt_displaylayer);
 		} else { 
 			if (this.lconfig[layername].defaultdraw !== undefined) {
@@ -2327,22 +2433,72 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				return ret;
 			}
 			
-			if (this.lconfig[layername]["style"] !== undefined) {
-				 // TODO: introduzir scaledependent e background depedent
-				out_return_obj.hasstyle = true;
-				this.pushStyle(this.lconfig[layername]['style'], out_return_obj.fillStroke, opt_displaylayer);
+			if (this.lconfig[layername].style !== undefined) {
+
+				// scale dependent rendering
+				if (this.lconfig[layername].style.scaledependent !== undefined) 
+				{
+					for (var cls_scl_val in this.lconfig[layername].style.scaledependent) 
+					{
+						p_scale_val = this.getScale();
+						if (this.lconfig[layername].style.scaledependent.hasOwnProperty(cls_scl_val) && 
+							(p_scale_val >= cls_scl_val && (dep_rendering_scaleval == null || cls_scl_val > dep_rendering_scaleval))
+							) {
+								dep_rendering_scaleval = cls_scl_val;
+						}
+					}
+					
+					if (dep_rendering_scaleval != null)
+					{
+						if (this.lconfig[layername].style.scaledependent[dep_rendering_scaleval] !== undefined) {
+							selstyle = this.lconfig[layername].style.scaledependent[dep_rendering_scaleval];
+						}
+					}
+				}
+				
+				if (selstyle != null) {
+					if (this.lconfig[layername].style.backgroundependent !== undefined) {
+						var lwcr, lr = [];
+						this.rcvctrler.getRasterNames(lr, true);
+						for (var bkraster in this.lconfig[layername].style.backgroundependent) {
+							if (this.lconfig[layername].style.backgroundependent.hasOwnProperty(bkraster)) {
+								lwcr = bkraster.toLowerCase();
+								if (lr.indexOf(lwcr) >= 0) {
+									if (this.lconfig[layername].style.backgroundependent[bkraster] !== undefined) {
+										this_has_bgdependent = true;
+										selstyle = this.lconfig[layername].style.backgroundependent[bkraster];
+										break;
+									}
+								}
+							}
+						}
+					}
+				}
+				
+				if (selstyle != null) {
+					if (this.drawnrasters.length > 0 && this.lconfig[layername].style.overraster !== undefined && !this_has_bgdependent) {
+						selstyle = this.lconfig[layername].style.overraster;
+					}
+				}
+
+				
 			} else if (this.lconfig[layername]["condstyle"] !== undefined && this.lconfig[layername]["condstyle"] != null) {
-				out_return_obj.hasstyle = true;
-				this.pushStyle(this.lconfig[layername]["condstyle"]["default"], out_return_obj.fillStroke, opt_displaylayer);
+				selstyle = this.lconfig[layername]["condstyle"]["default"];
 				out_return_obj.perattribute = this.lconfig[layername]["condstyle"]["perattribute"];
 				out_return_obj.permode = this.lconfig[layername]["condstyle"]["permode"];
-			}			
+			}	
+			
+			if (selstyle != null) {
+				out_return_obj.activestyle = selstyle;
+				this.pushStyle(selstyle, out_return_obj.fillStroke, opt_displaylayer);
+			}
 		}
 
 		return ret;
 
 	};
 
+	/*
 	this.activateLayerLabelStyle = function(layername, out_styleflags, out_return, opt_displaylayer)
 	{
 		'use strict';
@@ -2363,7 +2519,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				this.pushStyle(this.lconfig[layername].label.style, out_styleflags, opt_displaylayer);
 			}
 		}
-	};
+	};*/
 
 	this.getFeature = function(p_layername, p_objid)
 	{
@@ -2379,12 +2535,15 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return ret;
 	};
 
+	// opt_markerf_modifier - deverá ter correspondência com um modo / chave de permodemarker
 	this.drawSingleFeature = function(p_layername, p_objid, is_inscreenspace,
-							opt_displaylayer, opt_style, opt_do_debug)
+							opt_displaylayer, opt_style, opt_markerf_modifier,
+							b_renderlabel, opt_labelstyle, 
+							opt_do_debug)
 	{
 		'use strict';
 
-		var ldata, out_return = {};
+		var ldata, out_return = {}, out_return_l = {}, lbl_components=[];
 		var dodebug = false; // DEBUG
 		var feat;
 
@@ -2398,16 +2557,89 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			dodebug = opt_do_debug;
 		}
 		
-		this.activateLayerStyle(p_layername, out_return, opt_displaylayer, opt_style);
+		this.activateLayerStyle(p_layername, out_return, opt_displaylayer, opt_style);		
 
 		if (ldata[p_objid] !== undefined && ldata[p_objid] != null)
 		{
 			feat = ldata[p_objid];
-			if (feat == null) {
-				throw new Error("drawSingleFeature, NULL feature data, key:"+p_objid);
+			if (opt_markerf_modifier) {
+				this._drawFeature(feat, out_return.perattribute, out_return.permode, 
+									out_return.permodemarker[opt_markerf_modifier], {},
+									is_inscreenspace, p_layername,
+									out_return.fillStroke, dodebug,  
+									opt_displaylayer, p_objid);
+			} else {
+				this._drawFeature(feat, out_return.perattribute, out_return.permode, 
+									out_return.markerfunction, out_return.permodemarker,
+									is_inscreenspace, p_layername,
+									out_return.fillStroke, dodebug,  
+									opt_displaylayer, p_objid);
+			}
+		} else {
+			throw new Error("drawSingleFeature, NULL feature data, key:"+p_objid);
+			return null;
+		}
+
+		if (out_return.activestyle != null) {
+			this.popStyle(out_return.fillStroke, opt_displaylayer);
+		}
+		
+		if (b_renderlabel) {
+			var placementt, nxtlbl_exists=false;
+		
+			this.labelengine.activateLayerStyle(p_layername, out_return_l, opt_displaylayer, opt_labelstyle);
+
+			if (out_return_l.placementtype !== undefined) {
+				placementt = out_return_l.placementtype;
+			} else {
+				throw new Error("drawSingleFeature, no placement type for labels in layer " + p_layername);
 				return;
 			}
-			this._drawFeature(feat, out_return.perattribute, out_return.permode, 
+			nxtlbl_exists = this.labelengine.fetchLabel(p_layername, p_objid, lbl_components);
+
+			if (nxtlbl_exists) {
+				//console.log([lbl_components[0], lbl_components[1], lbl_components[2], placementt, 
+										//out_return.fillStroke, out_return.activestyle, opt_displaylayer]);
+				this.labelengine.lbl_gen(lbl_components[0], lbl_components[1], lbl_components[2], placementt, 
+										out_return_l.fillStroke, out_return_l.activestyle, is_inscreenspace, 
+										opt_displaylayer, dodebug);
+			}
+			
+			if (out_return.activestyle !== undefined && out_return_l.activestyle != null) {
+				this.popStyle(out_return_l.fillStroke, opt_displaylayer);
+			}
+
+		}
+
+		return feat;
+	};
+
+	// Not advisable to use on features persistent  between redraws:
+	//  as the feature passed in p_feat is static, feat coords are not 
+	//  updated between successive map refreshes
+	/*
+	this.drawSingleFeatureFeat = function(p_layername, p_feat, is_inscreenspace,
+							opt_displaylayer, opt_style, opt_markerf_modifier, opt_do_debug)
+	{
+		'use strict';
+
+		var out_return = {};
+		var dodebug = false; // DEBUG
+
+		if (opt_do_debug) {
+			dodebug = opt_do_debug;
+		}
+		
+		this.activateLayerStyle(p_layername, out_return, opt_displaylayer, opt_style);
+
+		if (opt_markerf_modifier) {
+			this._drawFeature(p_feat, out_return.perattribute, out_return.permode, 
+								out_return.permodemarker[opt_markerf_modifier], {},
+								is_inscreenspace, p_layername,
+								out_return.fillStroke, dodebug,  
+								opt_displaylayer);
+		} else {
+			this._drawFeature(p_feat, out_return.perattribute, out_return.permode, 
 								out_return.markerfunction, out_return.permodemarker,
 								is_inscreenspace, p_layername,
 								out_return.fillStroke, dodebug,  
@@ -2420,6 +2652,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		return feat;
 	};
+	*/
 	
 	this._drawRasterLyr = function(p_rastername, opt_maxallowed_duration, opt_force, opt_displaylayer)
 	{
@@ -2574,7 +2807,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		}
 
-		if (out_return.hasstyle) {
+		if (out_return.activestyle != null) {
 			this.popStyle(out_return.fillStroke, opt_displaylayer);
 		}
 	};
@@ -2614,14 +2847,14 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	};
 
-	this._sendReadFeatureRequest = function(opt_filterdata)
+	this._sendReadFeatureRequest = function(p_inscreenspace, opt_filterdata)
 	{
 		var fclen, chunk, lname, dispname;
 		let legend_attrnames = null;
 		var dontdraw = false;
 		var opt_filter_reference = null;
 		var reqid = null;
-		var inscreenspace = true;
+		//var inscreenspace = true;
 		var _inv;
 		
 		lname = this.rcvctrler.getCurrLayerName();				
@@ -2702,21 +2935,21 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 											p_self.setFeatureData(lname, respdata, dontdraw, 
 											activateReturn.perattribute, activateReturn.permode, 
 											activateReturn.markerfunction, activateReturn.permodemarker, 
-											inscreenspace, activateReturn.fillStroke, legend_attrnames);
+											p_inscreenspace, activateReturn.fillStroke, legend_attrnames);
 										} catch(e) {
 											console.log(".. error in _sendReadFeatureRequest, setFeatureData");
 											console.trace(e);
 											throw e;
 										}
 
-										if (activateReturn.hasstyle) {
+										if (activateReturn.activestyle != null) {
 											p_self.popStyle(activateReturn.fillStroke);
 										}
 
 										try {
-											if (!p_self.muted_vectors) {
-												p_self._retrieveVectorsFromServer(opt_filterdata);
-											}
+											//if (!p_self.muted_vectors) {
+												p_self._retrieveVectorsFromServer(p_inscreenspace, opt_filterdata);
+											//}
 										} catch(e) {
 											console.log(e);
 											p_self.onChangeFinish('error 1');
@@ -2779,10 +3012,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 										p_self.setFeatureData(lname, respdata, dontdraw, 
 										activateReturn.perattribute, activateReturn.permode,
 										activateReturn.markerfunction, activateReturn.permodemarker, 
-										inscreenspace, styleflags);
+										p_inscreenspace, styleflags);
 										p_self.drawLyr(lname, true, styleflags, respdata)
 
-										if (activateReturn.hasstyle) {
+										if (activateReturn.activestyle != null) {
 											p_self.popStyle(activateReturn.fillStroke);
 										}
 
@@ -2863,7 +3096,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 	};
 
-	this._retrieveVectorsFromServer = function(opt_filterdata)
+	this._retrieveVectorsFromServer = function(p_inscreenspace, opt_filterdata)
 	{
 		var currnumbs, nchunks, nvert;
 
@@ -2877,7 +3110,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (!this.rcvctrler.nextCurrLayer()) 
 				{
 					this.callSequence.addMsg("_retrieveVectorsFromServer", _inv, "next current layer: NONE");
-					this.onChangeFinish('normal');
+					this.onChangeFinish('normal', p_inscreenspace);
 					break;
 				} else if (this.activeserver && this.fanningChunks.length == 0) {
 
@@ -2915,7 +3148,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				}
 			}
 		}
-		this._sendReadFeatureRequest(opt_filterdata);
+		this._sendReadFeatureRequest(p_inscreenspace, opt_filterdata);
 	};
 	
 	this.checkLayerScaleDepVisibility = function(layername) {
@@ -2943,7 +3176,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			if (rasternames.indexOf(p_layername) >= 0) {
 				mutingfilter = true;
 			} else {
-				mutingfilter = (!this.muted_vectors || (this.lconfig[p_layername].allowmuting !== undefined && !this.lconfig[lname].allowmuting));
+				mutingfilter = (!this.muted_vectors || (this.lconfig[p_layername].allowmuting !== undefined && !this.lconfig[p_layername].allowmuting));
 			}
 			
 			if (scldep && mutingfilter)
@@ -2952,6 +3185,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}	
 			
 		}	
+		
+		//console.trace("checkLayerVisibility"+p_layername+" scld:"+scldep+" mutf:"+mutingfilter);
 		
 		return ret;
 	};
@@ -2981,7 +3216,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			obr_i++;
 			fobj = this.onBeforeRefresh[obr_i];
 		}
-
+		
+		// Verify that small scale limit was runover and activate small scale themes accordingly
+		
+		// WORKING  ----------------------
+		
 		this.callSequence.addMsg("_prepareRefreshDraw", _inv, String.format("executed {0} 'on before refresh' functions",obr_i));
 		
 		this.drawnrasters.length = 0;
@@ -3233,22 +3472,40 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.clearTransient();
 		}
 	}
+	
+	this.checkVectorsVisible = function() {
+		let vectors_visible = false, visvect=0; v_lyrs = [];
+		this.rcvctrler.getLayerNames(v_lyrs);
+		for (let li=0; li<v_lyrs.length; li++) {
+			if (this.checkLayerVisibility(v_lyrs[li])) {
+				visvect++;
+			}
+		}
+		if (visvect > 0) {
+			vectors_visible = true;
+		}
+		return vectors_visible;
+	}
 
-	this._executeVectorRefreshDraw = function(opt_filterdata)
+	this._executeVectorRefreshDraw = function(p_inscreenspace, opt_filterdata)
 	{
 		var _inv = this.callSequence.calling("_executeVectorRefreshDraw", arguments);
 		
 		this.waitingForFirstChunk = true;		
 		if (this.activeserver && this.rcvctrler.getLayerCount() > 0)
 		{
+			// checking muted_vectors is not enough, some themes might
+			// have allowmuting = false
+			let vectors_visible = this.checkVectorsVisible();
+			
 			this.callSequence.addMsg("_executeVectorRefreshDraw", _inv, "active server, existing stats:"+this.rcvctrler.existLayerStats()+", muted vectors:"+this.muted_vectors);
 			if (this.rcvctrler.existLayerStats()) {
 				try {	
 					if (!this.rcvctrler.hasAnythingToDraw()) {
 						this.progressMessage(this.msg("NOTHINGTODRAW"));
 						window.setTimeout(function(){ this.clearTransient(); }, 1000);
-					} else if (!this.muted_vectors) {
-						this._retrieveVectorsFromServer(opt_filterdata);
+					} else if (vectors_visible) {
+						this._retrieveVectorsFromServer(p_inscreenspace, opt_filterdata);
 					}
 				} catch(e) {
 					console.log(e);
@@ -3257,9 +3514,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		} else {
 			try {
-				if (!this.muted_vectors) {
+				if (vectors_visible) {
 					this.callSequence.addMsg("_executeVectorRefreshDraw", _inv, "no active server or zero layers");
-					this._retrieveVectorsFromServer(opt_filterdata);
+					this._retrieveVectorsFromServer(p_inscreenspace, opt_filterdata);
 				}
 			} catch(e) {
 				console.log(e);
@@ -3301,6 +3558,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (!this.muted_vectors && p_sclval >= this.vectorexclusive_scales[0] && p_sclval <= this.vectorexclusive_scales[1]) {
 			vectors_exclusive = true;
 		}
+		
+		let vectors_visible = false;
+		if (refresh_vectors) {
+			vectors_visible = this.checkVectorsVisible();
+		}
 
 		this.callSequence.addMsg("_executeRefreshDraw", _inv, String.format("refreshing vectors: {0}, rasters: {1}, muted vectors: {2}, vectors exclusive: {3}", refresh_vectors, refresh_rasters, this.muted_vectors, vectors_exclusive));
 		
@@ -3312,12 +3574,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					"refresh_vectors": refresh_vectors,
 					"filteringdata": opt_filterdata
 				},
-				(refresh_vectors && !this.muted_vectors)
+				(refresh_vectors && vectors_visible)
 			);
 		}
-		else if (refresh_vectors && !this.muted_vectors) 
+		else if (refresh_vectors && vectors_visible) 
 		{
-			this._executeVectorRefreshDraw(opt_filterdata);
+			this._executeVectorRefreshDraw(MapCtrlConst.DEFAULT_USE_SCREEN_COORD_SPACE, opt_filterdata);
 		}
 
 	}
@@ -3328,7 +3590,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var refresh_vectors = ((this.refreshcapability & MapCtrlConst.REFRESH_VECTORS) == MapCtrlConst.REFRESH_VECTORS);		
 		if (refresh_vectors) 
 		{
-			this._executeVectorRefreshDraw(opt_filterdata);
+			this._executeVectorRefreshDraw(MapCtrlConst.DEFAULT_USE_SCREEN_COORD_SPACE, opt_filterdata);
 		}
 	}
 
@@ -3426,13 +3688,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	};
 
-	this.drawLabels = function(p_scale_val, opt_displaylayer)
+	this.drawLabels = function(p_inscreeenspace, p_scale_val, opt_displaylayer)
 	{
-		var out_styleflags = [], als_return=[];
+		var out_return_obj = {}, null_opt_style = null;
 		
 		if (this.labelengine != null)
 		{
-			i = 0;
+			var i = 0;
 			while (this.lnames[i] !== undefined && this.lnames[i] != null)
 			{
 				layername = this.lnames[i];
@@ -3440,16 +3702,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 				if (this.labelengine.layerHasLabels(layername))
 				{
-					this.activateLayerLabelStyle(layername, out_styleflags, als_return, opt_displaylayer);
-					hasstyle = als_return[0];
-					
-					this.labelengine.genLabels(p_scale_val, layername, opt_displaylayer);
-
-					if (hasstyle) {
-						this.popStyle(out_styleflags, opt_displaylayer);
+					if (this.labelengine.activateLayerStyle(layername, out_return_obj, opt_displaylayer, null_opt_style)) {
+						this.labelengine.genLabels(p_scale_val, layername, out_return_obj, p_inscreeenspace, opt_displaylayer);
+						if (out_return_obj.activestyle != null) {
+							this.popStyle(out_return_obj.fillStroke, opt_displaylayer);
+						}
 					}
 				}
-
 			}
 		}
 	};
@@ -3491,21 +3750,32 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	}
 
-	this.onChangeFinish = function(p_type, opt_displaylayer)
+	this.onChangeFinish = function(p_type, p_inscreeenspace, opt_displaylayer)
 	{
-		if (p_type != 'error') {
-			this.drawLabels(this.getScale(), opt_displaylayer);
+		var scl = this.getScale();
+		if (p_type.indexOf('normal') >= 0) {
+			this.drawLabels(p_inscreeenspace, scl, opt_displaylayer);
 		}
 		this._onDrawFinish(p_type);
-		this.pubScaleVal();
+		this.pubScaleVal(scl);
 
 		if (this.mapctrlsmgr) {
-			let wdg, wdgname;
+
+			let wdg, wdgname, wdghidsmallscale, insmallscaleview = false;
+			wdghidsmallscale = this.mapctrlsmgr.widgetnames_hide_small_scale;
+
+			if (this.small_scale_limit !== undefined && scl > this.small_scale_limit) {
+				insmallscaleview = true;
+			}
 			for (let i=0; i<this.mapctrlsmgr.widgetnames_hide_during_refresh.length; i++) {
 				wdgname = this.mapctrlsmgr.widgetnames_hide_during_refresh[i];
 				wdg = document.getElementById(wdgname);
 				if (wdg) {
-					wdg.style.visibility = "visible";
+					if (this.mapctrlsmgr.widgetnames_hide_small_scale.indexOf(wdgname) >= 0 && insmallscaleview) {
+						wdg.style.visibility = "hidden";
+					} else {
+						wdg.style.visibility = "visible";
+					}
 				}
 			}
 		}
@@ -3535,8 +3805,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			try {
 				dff(this, p_item);
 			} catch(e) {
+				delete this.onDrawFinishFuncs[dffkey];
 				this._cancelCurrentChange = false;
-				console.log("key:"+dffkey+" json:"+JSON.stringify(this.onDrawFinishFuncs));
+				console.warn("key:"+dffkey+" json:"+JSON.stringify(this.onDrawFinishFuncs));
 				throw(e);
 			}
 		}		
@@ -3574,6 +3845,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	this.unregisterOnDrawFinish = function(p_key) {
 		delete this.onDrawFinishFuncs[p_key];
+	};
+
+	this.checkOnDrawFinishRegistry = function(p_key) {
+		return (this.onDrawFinishFuncs[p_key] !== undefined);
 	};
 
 	this.registerOneTimeOnDrawFinish = function(p_func) {
@@ -3689,7 +3964,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return ret;
 	};
 
-	//this.grController = new CanvasController(p_elemid, this);
 	this.grCtrlrMgr = new GraphicControllerMgr(this, p_elemid);
 	this.getGraphicController = function(opt_key) {
 		return this.grCtrlrMgr.get(opt_key);
@@ -3701,23 +3975,29 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.labelengine = new MapLabelEngine(this);
 	this.spatialindexer = new SpatialIndexer(this, MapCtrlConst.SPINDEX_STEP);
 
-	this.findNearestObject = function(p_scrx, p_scry, p_radius, p_layername, opt_forcemx)
+	this.findNearestObject = function(p_scrx, p_scry, p_layername, opt_forcemx)
 	{
 		var ret = null;
-		var pix_radius = Math.ceil(this.m * p_radius);
-
-		//console.log(String.format("scr:[{0},{1}] pxrad:{2} rad:{3}",p_scrx, p_scry, pix_radius, p_radius));
+		var found = false;
 		
-		if (this.spatialindexer) {
-			ret = this.spatialindexer.findNearestObject([p_scrx, p_scry], pix_radius, p_layername);
-		}
+		var tol = this.mapctrlsmgr.getTolerance(this.getScale());
+		
+		var pix_radius = Math.ceil(this.m * tol);
 
+		if (this.spatialindexer) {
+			ret = this.spatialindexer.findNearestObject([p_scrx, p_scry], pix_radius, p_layername, null, true);
+			if (ret) {
+				found = true;
+			}
+		}
+		
+		if (false && found != toggle_found) {
+			console.log(String.format("fnd:{0} scr:[{1},{2}] pxrad:{3} rad:{4} lyr:{5}", found, p_scrx, p_scry, pix_radius, p_radius, p_layername));
+			toggle_found = found; 
+		}
+		
 		return ret;
 	}
-
-	this.setMarkerSize = function(p_style) {
-		this.getGraphicController().setMarkerSize(p_style);
-	};
 
 	this.setMarkVertexFunc = function(p_func) {
 		this.getGraphicController().setMarkVertexFunc(p_func);
@@ -3733,7 +4013,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	this.drawFromIndex = function(p_layername, p_ixname, p_keyvalue, in_inscreenspace, opt_displaylayer,
-							opt_do_debug, opt_style)
+							opt_style, opt_markerf_modifier, b_drawlabel, opt_labelstyle, opt_do_debug)
 	{
 		var idx_found= true;
 		if (this.globalindex[p_ixname] === undefined) {
@@ -3754,7 +4034,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			{
 				gid = oidscol[i];
 				this.drawSingleFeature(p_layername, gid, in_inscreenspace, 
-						opt_displaylayer, opt_style, opt_do_debug);
+						opt_displaylayer, opt_style, opt_markerf_modifier, b_drawlabel, opt_labelstyle, opt_do_debug);
 				i++;
 			}
 		}
@@ -3884,17 +4164,17 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var inscreenspace = true;
 		var msg = p_msg;
 		this.getGraphicController().saveCtx(ctxlyr);
-		var txtsz = 18;
+		var txtsz = 12;
 		this.getGraphicController().setFont(txtsz+"px Arial", ctxlyr);
 		var tw = this.getGraphicController().measureTextWidth(msg, ctxlyr);
 		var margin = 40;
 		var mask_offset_y = 60;
-		var mask_offset_y = 60;
+		var mask_offset_y = 20;
 
 
 		var wid = 2 * margin + tw;
 		var mask_y = this.getGraphicController().getCanvasDims()[1]-mask_offset_y;
-		var text_y = mask_y + txtsz - 3;
+		var text_y = mask_y + txtsz + 2;
 
 
 		this.getGraphicController().clearDisplayLayer(ctxlyr);
@@ -3971,22 +4251,72 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			})(this.mapctrlsmgr)				
 	);
 
-	// debounced resize
-	window.addEventListener("resize", 
-		(function (p_mapctrl) {
-			let timerId = null;
-			let waitPeriodMsec = 200;
-			return function(e) {
-				if (timerId != null) {
-					window.clearTimeout(timerId);
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
+			'touchstart',
+			(function (p_mapctrlsmgr) {
+				return function(e) {
+					var te = p_mapctrlsmgr.touchController.touchstart(e);
+					//console.log('touchstart');
+					if (te) {
+						// no mouse buttons
+						p_mapctrlsmgr.mousedown(te, true);
+					}
 				}
-				timerId = window.setTimeout(function(e) {
-						p_mapctrl.refresh(true);
-						timerId = null;
-					}, waitPeriodMsec);
-			}
-		})(this)
+			})(this.mapctrlsmgr)					
 	);
 
-	
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
+			'touchmove',
+			(function (p_mapctrlsmgr) {
+				return function(e) {
+					var te = p_mapctrlsmgr.touchController.touchmove(e);
+					//console.log('touchmove');
+					if (te) {
+						p_mapctrlsmgr.mousemove(te);
+					}
+				}
+			})(this.mapctrlsmgr)					
+	);
+
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
+			'touchend',
+			(function (p_mapctrlsmgr) {
+				return function(e) {
+					var te = p_mapctrlsmgr.touchController.touchend(e);
+					//console.log('touchend');
+					if (te) {
+						p_mapctrlsmgr.mouseup(te);
+					}
+				}
+			})(this.mapctrlsmgr)					
+	);
+
+	/*
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
+			'pointerleave',
+			(function (p_mapctrlsmgr) {
+				return function(e) {
+					if (p_mapctrlsmgr.gestureCtrler.pointerup(e)) {
+		console.log("pointerleave mouseleave");
+						p_mapctrlsmgr.mouseleave(e);
+					}
+				}
+			})(this.mapctrlsmgr)					
+	);*/
+
+	attEventHandler(this.getGraphicController().getTopCanvasElement(),
+			'touchcancel',
+			(function (p_mapctrlsmgr) {
+				return function(e) {
+					var te = p_mapctrlsmgr.touchController.touchend(e);
+					//console.log('touchcancel');
+					if (te) {
+						p_mapctrlsmgr.mouseup(te);
+					}
+				}
+			})(this.mapctrlsmgr)					
+	);
+
+	window.addEventListener("resize", resizeExec(this));
+
 }

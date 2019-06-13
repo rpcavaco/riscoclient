@@ -1,4 +1,3 @@
-
 function MapLabelEngine(p_mapcontroller) {
 	
 	this.getClassStr = function() {
@@ -36,6 +35,7 @@ function MapLabelEngine(p_mapcontroller) {
 	this.lconfig = {};
 	this.weighted_labels = null;
 	this.currentIndexes = null;
+	this.weighted_oids = null;
 	
 	this.labelgen_profiling = false;
 	
@@ -47,6 +47,7 @@ function MapLabelEngine(p_mapcontroller) {
 	this.addLabelsInit = function() 
 	{
 		this.weighted_labels = {};
+		this.weighted_oids = {};
 		this.currentIndexes = {};
 	}
 
@@ -58,11 +59,232 @@ function MapLabelEngine(p_mapcontroller) {
 			}
 			this.weighted_labels[lname].sort(
 				function(a,b) {
-					return a[0] - b[0];
+					return a[1] - b[1];
 				}
 			);
 		}
 		this.weighted_labels[lname].reverse();
+		for (var xi=0; xi<this.weighted_labels[lname].length; xi++) {
+			this.weighted_oids[lname][xi] = this.weighted_labels[lname][xi][0]
+		}
+	};
+
+	this.lbl_gen = function(p_text, p_coords, p_pathlevels, p_placementttype, 
+				p_fillstroke, p_styleobj, p_inscreenspace, opt_displaylayer, opt_do_debug) {
+		
+		var txtLen, tmppt=[], featLen, steplen, stlen;	
+		var grCtrller = this.mapcontroller.getGraphicController();
+		var charsz = grCtrller.getFontSize(opt_displaylayer);
+		var scale = this.mapcontroller.getScale();
+		
+		if (p_text!=null)  // text
+		{
+			switch(p_placementttype.toUpperCase()) 
+			{
+				case "CENTER":
+					var anchpt = [];
+					geom.pathCenter(p_coords, p_pathlevels, anchpt);				
+					grCtrller.saveCtx(opt_displaylayer);
+					
+					//stdfillstyle = grCtrller.getFillStyle();
+					
+					grCtrller.setTextAlign('center');
+
+					// shadow
+					//grCtrller.setFillStyle('#000');
+					//grCtrller.rotatedText(p_text, anchpt, 0, fillStroke);
+
+					// HARDCODED
+					//anchpt[0] = anchpt[0] - 2;
+					//anchpt[1] = anchpt[1] - 2;
+					//grCtrller.setFillStyle(stdfillstyle);
+					//console.log([opt_displaylayer, p_styleobj.fillcolor]);
+
+					/*
+					if (p_styleobj != null && p_styleobj.fillcolor !== undefined) {
+						grCtrller.setFillStyle(p_styleobj.fillcolor);
+					}
+					if (p_styleobj != null && p_styleobj.strokecolor !== undefined) {
+						grCtrller.setStrokeStyle(p_styleobj.strokecolor);
+					}*/
+
+					grCtrller.rotatedText(p_text, anchpt, 0, p_fillstroke, opt_displaylayer);
+					grCtrller.restoreCtx(opt_displaylayer);
+					break;
+
+				// along polylines
+				case "ALONG":
+					
+					txtLen = grCtrller.measureTextWidth(p_text, opt_displaylayer);
+					featLen = geom.pathLength(p_coords);
+					
+					if (featLen >= 9 * txtLen) {
+						k = 4;
+					} else if (featLen >= 7 * txtLen) {
+						k = 3;
+					} else if (featLen >= 5 * txtLen) {
+						k = 2;
+					} else if (featLen >= txtLen) {
+						k = 1;
+					}
+					
+					var maxk = 0;
+					if (k>0) 
+					{
+						steplen = (featLen - k * txtLen) / (k + 1);
+						stlen = steplen;	
+						for (var i=0; i<=k; i++) {
+
+							this.labelAlongPath(p_text, p_coords, 
+									stlen, 
+									charsz, p_fillstroke, opt_displaylayer);
+
+							stlen += txtLen + stlen;
+							
+						}
+					}
+					break;
+
+				// oriented according to a leader line
+				case "LEADER":
+					
+					var maxscl, doarrow = false, anchpt = [], angle_ret=[], startpt;						
+					var coords, offsetA = 10, offsetB = 8, offsetC = 2, arrowang = geom.deg2Rad(15);
+
+					geom.twoPointAngle(
+							[p_coords[0], p_coords[1]], 
+							[p_coords[2], p_coords[3]],
+							angle_ret
+					);
+
+					grCtrller.saveCtx(opt_displaylayer);
+					
+					if (p_styleobj != null && p_styleobj.leader_arrowfillcolor !== undefined) {
+						grCtrller.setFillStyle(p_styleobj.leader_arrowfillcolor, opt_displaylayer);
+					}
+					if (p_styleobj != null && p_styleobj.leader_arrowmaxscale !== undefined) {
+						maxscl = p_styleobj.leader_arrowmaxscale;
+						if (scale <= maxscl) {
+							doarrow = true;
+						}
+					}
+					
+					startpt = [p_coords[2], p_coords[3]];
+
+					// First and third quadrants - text aligns left
+					if (angle_ret[1] == 2 || angle_ret[1] == 3) 
+					{
+						// arrow
+						if (doarrow)
+						{
+							coords = [startpt[0], startpt[1]];
+														
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0]-arrowang, offsetB, tmppt);
+							coords.push(tmppt[0]);
+							coords.push(tmppt[1]);
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0]+arrowang, offsetB, tmppt);
+							coords.push(tmppt[0]);
+							coords.push(tmppt[1]);
+							coords.push(startpt[0]);
+							coords.push(startpt[1]);
+
+							if (p_styleobj != null && p_styleobj.leader_arrowfillcolor !== undefined) {
+								grCtrller.setFillStyle(p_styleobj.leader_arrowfillcolor, opt_displaylayer);
+							}
+
+							grCtrller.drawSimplePath(coords, false, true, null, 
+									p_inscreenspace, opt_displaylayer, false, false, null, null); 
+
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0], offsetA, anchpt);
+							
+						} else {
+							geom.applyPolarShiftTo(startpt, 
+								angle_ret[0], offsetC, anchpt);
+						}
+						
+						grCtrller.setTextAlign('left', opt_displaylayer);
+					} 
+					else 
+					{
+						// First and third quadrants - text aligns right
+						
+						// arrow
+						//console.log(doarrow+" 2");
+						if (doarrow)
+						{
+							coords = [startpt[0], startpt[1]];
+														
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0]-arrowang, -offsetB, tmppt);
+
+							coords.push(tmppt[0]);
+							coords.push(tmppt[1]);
+
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0]+arrowang, -offsetB, tmppt);
+
+							coords.push(tmppt[0]);
+							coords.push(tmppt[1]);
+							coords.push(startpt[0]);
+							coords.push(startpt[1]);
+
+							if (p_styleobj != null && p_styleobj.leader_arrowfillcolor !== undefined) {
+								grCtrller.setFillStyle(p_styleobj.leader_arrowfillcolor, opt_displaylayer);
+							}
+
+							grCtrller.drawSimplePath(coords, false, true, 
+									null, p_inscreenspace, opt_displaylayer, false, false, null, null); 
+
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0], -offsetA, anchpt);
+							
+						} else {
+							geom.applyPolarShiftTo(startpt, 
+									angle_ret[0], -offsetC, anchpt);
+						}
+
+						grCtrller.setTextAlign('right', opt_displaylayer);
+					}
+					
+					
+					if (p_styleobj != null && p_styleobj.leader_textfillcolor !== undefined) {
+						grCtrller.setFillStyle(p_styleobj.leader_textfillcolor, opt_displaylayer);
+					}
+					if (p_styleobj != null && p_styleobj.leader_textstrokecolor !== undefined) {
+						grCtrller.setStrokeStyle(p_styleobj.leader_textstrokecolor, opt_displaylayer);
+					}
+					if (p_styleobj != null && p_styleobj.leader_textlinewidth !== undefined) {
+						grCtrller.setLineWidth(p_styleobj.leader_textlinewidth, opt_displaylayer);
+					}
+
+					/**
+					 * Label SHADOWS
+					 * Slows down display too much -- Firefox Quantum 65.0.2
+					if (p_styleobj.leader_shadowcolor !== undefined) {
+						grCtrller.setShadowColor(p_styleobj.leader_shadowcolor);
+					}
+					if (p_styleobj.leader_shadowoffsetx !== undefined) {
+						grCtrller.setShadowOffsetX(p_styleobj.leader_shadowoffsetx);
+					}
+					if (p_styleobj.leader_shadowoffsety !== undefined) {
+						grCtrller.setShadowOffsetY(p_styleobj.leader_shadowoffsety);
+					}
+					if (p_styleobj.leader_shadowblur !== undefined) {
+						grCtrller.setShadowBlur(p_styleobj.leader_shadowblur);
+					}
+					* */
+					
+					grCtrller.rotatedText(p_text, anchpt, angle_ret[0], p_fillstroke);
+					grCtrller.restoreCtx(opt_displaylayer);
+					
+					break;
+					
+			}
+			
+		}	
 	};
 	
 	this.resetIndex = function(p_layername) {
@@ -99,7 +321,136 @@ function MapLabelEngine(p_mapcontroller) {
 			}
 		}
 	};
-	
+
+	this.activateLayerStyle = function(layername, out_return_obj, 
+				opt_displaylayer, opt_style)
+	{
+		'use strict';
+		var ret = true;
+		var p_scale_val, tmpstyle, selstyle=null,  dep_rendering_scaleval = null;
+		var this_has_bgdependent = false;
+		
+		if (this.lconfig[layername] === undefined || this.lconfig[layername] == null) {
+			throw new Error("labelengine activateLayerStyle -- layer not configured:" + layername);
+		}
+
+		out_return_obj.fillStroke = {
+				stroke: false,
+				fill: false
+		};
+		out_return_obj.activestyle = null;
+		out_return_obj.perattribute = null;
+		out_return_obj.permode = null;
+		out_return_obj.placementtype = null;
+		
+		if (opt_style)
+		{
+			selstyle = opt_style;
+		} else { 
+			if (this.lconfig[layername].defaultdraw !== undefined) {
+				ret = this.lconfig[layername].defaultdraw;
+			}
+
+			if (!ret) {
+				return ret;
+			}
+			
+			/*
+			console.log(layername);
+			console.log(this.lconfig[layername]);
+			* */
+			
+			if (this.lconfig[layername].style !== undefined) {
+				
+				selstyle = clone(this.lconfig[layername].style);
+
+				// scale dependent rendering
+				if (this.lconfig[layername].style.scaledependent !== undefined) 
+				{
+					for (var cls_scl_val in this.lconfig[layername].style.scaledependent) 
+					{
+						p_scale_val = this.mapcontroller.getScale();
+						if (this.lconfig[layername].style.scaledependent.hasOwnProperty(cls_scl_val) && 
+							(p_scale_val >= cls_scl_val && (dep_rendering_scaleval == null || cls_scl_val > dep_rendering_scaleval))
+							) {
+								dep_rendering_scaleval = cls_scl_val;
+						}
+					}
+					
+					if (dep_rendering_scaleval != null)
+					{
+						if (this.lconfig[layername].style.scaledependent[dep_rendering_scaleval] !== undefined) {
+							tmpstyle = this.lconfig[layername].style.scaledependent[dep_rendering_scaleval];
+							for (var skey in tmpstyle) {
+								if (!tmpstyle.hasOwnProperty(skey)) {
+									continue;
+								}
+								selstyle[skey] = tmpstyle[skey];
+							}
+						}
+					}
+				}
+				
+				if (this.lconfig[layername].style.backgroundependent !== undefined) {
+					var lwcr, lr = [];
+					this.mapcontroller.rcvctrler.getRasterNames(lr, true);
+					for (var bkraster in this.lconfig[layername].style.backgroundependent) {
+						if (this.lconfig[layername].style.backgroundependent.hasOwnProperty(bkraster)) {
+							lwcr = bkraster.toLowerCase();
+							if (lr.indexOf(lwcr) >= 0) {
+								if (this.lconfig[layername].style.backgroundependent[bkraster] !== undefined) {
+									this_has_bgdependent = true;
+									tmpstyle = this.lconfig[layername].style.backgroundependent[bkraster];
+									for (var skey in tmpstyle) {
+										if (!tmpstyle.hasOwnProperty(skey)) {
+											continue;
+										}
+										selstyle[skey] = tmpstyle[skey];
+									}
+									break;
+								}
+							}
+						}
+					}
+				}
+
+				if (this.mapcontroller.drawnrasters.length > 0 && this.lconfig[layername].style.overraster !== undefined && !this_has_bgdependent) {
+					tmpstyle = this.lconfig[layername].style.overraster;
+					for (var skey in tmpstyle) {
+						if (!tmpstyle.hasOwnProperty(skey)) {
+							continue;
+						}
+						selstyle[skey] = tmpstyle[skey];
+					}
+				}
+				
+			} else if (this.lconfig[layername]["condstyle"] !== undefined && this.lconfig[layername]["condstyle"] != null) {
+				selstyle = this.lconfig[layername]["condstyle"]["default"];
+				out_return_obj.perattribute = this.lconfig[layername]["condstyle"]["perattribute"];
+				out_return_obj.permode = this.lconfig[layername]["condstyle"]["permode"];
+			}			
+		}
+		
+		if (selstyle != null) {
+		
+			// console.log(selstyle);
+
+			if (selstyle.placementtype === undefined) {
+				out_return_obj.placementtype = "CENTER";
+				console.warn("Missing lable placement type, defaulting to CENTER, layer:"+layername);
+			} else {
+				out_return_obj.placementtype = selstyle.placementtype;
+			}
+			out_return_obj.activestyle = selstyle;
+			this.mapcontroller.pushStyle(selstyle, out_return_obj.fillStroke, opt_displaylayer);
+		} else {
+			console.trace("selstyle lbl activateLayerStyle NULO:"+layername);
+		}	
+
+		return ret;
+
+	};
+		
 	//tendo em conta os limites de escala
 	this.layerHasLabels = function(p_lname) {
 		
@@ -202,17 +553,45 @@ function MapLabelEngine(p_mapcontroller) {
 
 		if (this.weighted_labels[layername] === undefined) {
 			this.weighted_labels[layername] = [];
+			this.weighted_oids[layername] = [];
 			this.currentIndexes[layername] = -1;
 		}
 		
+		//console.log([layername,p_feature.oid,labeltxt,weight]);
+		
+		this.weighted_oids[layername].push(p_feature.oid);
 		this.weighted_labels[layername].push(
 				[
-				 weight, labeltxt, 
+				 p_feature.oid, weight, labeltxt, 
 				 clone(p_screencoords),
 				 p_feature.path_levels
 				]
 			);
 
+	};
+
+	this.fetchLabel = function(p_lname, p_oid, out_ret) 
+	{
+		var ret = false, wl = null, idx;
+		out_ret.length = 3;
+		
+		if (this.lnames.indexOf(p_lname) >= 0) 
+		{
+			if (this.weighted_oids[p_lname]) {
+				idx = this.weighted_oids[p_lname].indexOf(p_oid);
+				wl = this.weighted_labels[p_lname][idx];
+				if (wl !== undefined) 
+				{
+					//console.log(JSON.stringify(wl));
+					out_ret[0] = wl[2]; // text
+					out_ret[1] = clone(wl[3]); // coords
+					out_ret[2] = wl[4]; // path_levels
+					ret = true;
+				}
+			}	
+		}
+		
+		return ret;
 	};
 	
 	this.nextLabel = function(p_lname, out_ret) 
@@ -237,9 +616,9 @@ function MapLabelEngine(p_mapcontroller) {
 			if (wl !== undefined) 
 			{
 				//console.log(JSON.stringify(wl));
-				out_ret[0] = wl[1]; // text
-				out_ret[1] = clone(wl[2]); // coords
-				out_ret[2] = wl[3]; // path_levels
+				out_ret[0] = wl[2]; // text
+				out_ret[1] = clone(wl[3]); // coords
+				out_ret[2] = wl[4]; // path_levels
 				ret = true;
 				this.currentIndexes[p_lname] = this.currentIndexes[p_lname] + 1;				
 			}
@@ -506,7 +885,8 @@ function MapLabelEngine(p_mapcontroller) {
 		return ret;
 	}
 
-	this.genLabels = function(p_scale_val, p_layername, p_overraster, opt_displaylayer) 
+	// Generates all labels for a layer
+	this.genLabels = function(p_scale_val, p_layername, p_actstyle_retobj, p_inscreenspace, opt_displaylayer) 
 	{
 		'use strict';
 		
@@ -514,10 +894,17 @@ function MapLabelEngine(p_mapcontroller) {
 		
 		var t0=0, t1=0, t2=0;
 		
+		//console.log(p_actstyle_retobj);
+		
+		var placementtype = p_actstyle_retobj.placementtype;
+		var fillstroke = p_actstyle_retobj.fillStroke;
+		var active_style = p_actstyle_retobj.activestyle;
+		
 		if (this.labelgen_profiling) {
 			t0 = Date.now();
 		}
 
+		/*
 		var mapCtrller = this.mapcontroller;
 		
 		let fillStroke = {
@@ -528,7 +915,7 @@ function MapLabelEngine(p_mapcontroller) {
 		var this_styleobj = {};
 		for (var sty_attr in this.lconfig[p_layername].style) 
 		{
-			if (this.lconfig[p_layername].style.hasOwnProperty(sty_attr) && sty_attr != "scaledependent" && sty_attr != "overraster") {
+			if (this.lconfig[p_layername].style.hasOwnProperty(sty_attr) && sty_attr != "scaledependent" && sty_attr != "overraster" && sty_attr != "backgroundependent") {
 				this_styleobj[sty_attr] = this.lconfig[p_layername].style[sty_attr];
 				if (sty_attr.indexOf("fill") >= 0) {
 					fillStroke["fill"] = true;
@@ -571,6 +958,7 @@ function MapLabelEngine(p_mapcontroller) {
 		// -------------------------------------------------------------
 
 		// Background dependent label rendering ------------------------
+		let this_has_bgdependent = false;
 		if (this.lconfig[p_layername].style.backgroundependent !== undefined) {
 			let lwcr, lr = [];
 			mapCtrller.rcvctrler.getRasterNames(lr, true);
@@ -578,6 +966,7 @@ function MapLabelEngine(p_mapcontroller) {
 				if (this.lconfig[p_layername].style.backgroundependent.hasOwnProperty(bkraster)) {
 					lwcr = bkraster.toLowerCase();
 					if (lr.indexOf(lwcr) >= 0) {
+						this_has_bgdependent = true;
 						for (var sty_attr in this.lconfig[p_layername].style.backgroundependent[bkraster]) 
 						{
 							if (this.lconfig[p_layername].style.backgroundependent[bkraster].hasOwnProperty(sty_attr)) {
@@ -596,7 +985,7 @@ function MapLabelEngine(p_mapcontroller) {
 		}
 		// -------------------------------------------------------------
 		
-		if (mapCtrller.drawnrasters.length > 0 && this.lconfig[p_layername].style.overraster !== undefined) {
+		if (mapCtrller.drawnrasters.length > 0 && this.lconfig[p_layername].style.overraster !== undefined && !this_has_bgdependent) {
 			for (var or_sty_attr in this.lconfig[p_layername].style.overraster) 
 			{
 				if (this.lconfig[p_layername].style.overraster.hasOwnProperty(or_sty_attr)) {
@@ -610,35 +999,46 @@ function MapLabelEngine(p_mapcontroller) {
 				}
 			}		
 		}
+		* */
+		
+		/*
+		console.log("labels:"+p_layername);
+		console.log(this.lconfig[p_layername].style);
+		*/
 			
+		/*
 		if (this.lconfig[p_layername].style.placementtype !== undefined) {
 			placementt = this_styleobj.placementtype;
 		} else {
 			throw new Error("No placement type for labels in layer " + p_layername);
 			return;
-		}
+		}*/
 		
-		var grCtrller = mapCtrller.getGraphicController();		
+		var grCtrller = this.mapcontroller.getGraphicController();		
 		if (opt_displaylayer != null) {
 			grCtrller.setActiveDisplayLayer(opt_displaylayer);
 		} else {
 			grCtrller.setActiveDisplayLayer("base");
 		}
-		var charsz = grCtrller.getFontSize();
-		
+		var charsz = grCtrller.getFontSize();		
 		var nxtlbl_exists = this.nextLabel(p_layername, lbl_components);
-		var txtLen, featLen, steplen, stlen;
 		
-		var stdfillstyle;
+		var txtLen, featLen, steplen, stlen;		
+		var stdfillstyle, scale = this.mapcontroller.getScale();
 		
 		while (nxtlbl_exists && ctrlcnt > 0) 
 		{
 			ctrlcnt--;
 			k = 0;
 			
-			if (lbl_components[0]!=null)  // text
+			// this.lbl_gen = function(p_text, p_coords, p_pathlevels, p_placementttype, p_fillstroke, p_styleobj, opt_displaylayer)
+	
+			this.lbl_gen(lbl_components[0], lbl_components[1], lbl_components[2], placementtype, fillstroke, active_style, p_inscreenspace, opt_displaylayer);
+			
+			/*
+			if (false && lbl_components[0]!=null)  // text
 			{
-				switch(placementt.toUpperCase()) 
+				switch(placementtype.toUpperCase()) 
 				{
 					case "CENTER":
 						var anchpt = [];
@@ -651,7 +1051,7 @@ function MapLabelEngine(p_mapcontroller) {
 
 						// shadow
 						//grCtrller.setFillStyle('#000');
-						//grCtrller.rotatedText(lbl_components[0], anchpt, 0, fillStroke);
+						//grCtrller.rotatedText(lbl_components[0], anchpt, 0, p_fillstroke);
 
 						// HARDCODED
 						//anchpt[0] = anchpt[0] - 2;
@@ -665,7 +1065,7 @@ function MapLabelEngine(p_mapcontroller) {
 							grCtrller.setStrokeStyle(this_styleobj.strokecolor);
 						}
 
-						grCtrller.rotatedText(lbl_components[0], anchpt, 0, fillStroke);
+						grCtrller.rotatedText(lbl_components[0], anchpt, 0, p_fillstroke);
 						
 						grCtrller.restoreCtx();
 						break;
@@ -695,7 +1095,7 @@ function MapLabelEngine(p_mapcontroller) {
 
 								this.labelAlongPath(lbl_components[0], lbl_components[1], 
 										stlen, 
-										charsz, fillStroke, opt_displaylayer);
+										charsz, p_fillstroke, opt_displaylayer);
 
 								stlen += txtLen + stlen;
 								
@@ -818,7 +1218,7 @@ function MapLabelEngine(p_mapcontroller) {
 							grCtrller.setLineWidth(this_styleobj.leader_textlinewidth);
 						}
 
-						/**
+						**
 						 * Label SHADOWS
 						 * Slows down display too much -- Firefox Quantum 65.0.2
 						if (this_styleobj.leader_shadowcolor !== undefined) {
@@ -833,16 +1233,16 @@ function MapLabelEngine(p_mapcontroller) {
 						if (this_styleobj.leader_shadowblur !== undefined) {
 							grCtrller.setShadowBlur(this_styleobj.leader_shadowblur);
 						}
-						* */
+						***
 						
-						grCtrller.rotatedText(lbl_components[0], anchpt, angle_ret[0], fillStroke);
+						grCtrller.rotatedText(lbl_components[0], anchpt, angle_ret[0], p_fillstroke);
 						grCtrller.restoreCtx();
 						
 						break;
 						
 				}
 				
-			}
+			}*/
 			nxtlbl_exists = this.nextLabel(p_layername, lbl_components);
 		}
 		

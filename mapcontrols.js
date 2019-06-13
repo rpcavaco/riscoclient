@@ -3,6 +3,36 @@ var MOUSEBTN_LEFT = 1;
 var MOUSEBTN_MIDDLE = 2;
 var MOUSEBTN_RIGHT = 4;
 
+function getOffset(p_element, out_list) {
+	
+	out_list.length = 2;
+	
+	let bodyRect = document.body.getBoundingClientRect(),
+    elemRect = p_element.getBoundingClientRect();
+    // elemRect = p_element.parentElement.getBoundingClientRect();
+    
+    //console.log(String.format("offset e:{0}, b:{1}", elemRect.left, bodyRect.left));
+    
+    out_list[0] = elemRect.left - bodyRect.left;
+    out_list[1] = elemRect.top - bodyRect.top;
+}
+
+function getEvtCoords(p_evt, p_target, out_coords) {
+
+	let xcoord = p_evt.clientX,
+	ycoord = p_evt.clientY,
+	offsets = [];
+		
+	getOffset(p_target, offsets);
+	
+	out_coords.length = 2;
+	out_coords[0] = xcoord - offsets[0];
+	out_coords[1] = ycoord - offsets[1];
+	
+    //console.log(String.format("offset xy:{0},{1} off:{2},{3} out:{4},{5}", xcoord, ycoord, offsets[0], offsets[1], out_coords[0], out_coords[1]));
+
+}
+
 // baseclass intended for extension
 function _Basetool() {
 
@@ -46,17 +76,22 @@ function Pan(mouseButtonMask, p_mapctrl)
 	this.mouseButtonMask = mouseButtonMask;
 	this.name = 'pan';
 	this.the_map = p_mapctrl;
+	this.last_pt = [];
 	
-	this.mousedown = function(e, target, x, y) 
+	this.mousedown = function(e, target, x, y, opt_nobuttons) 
 	{
 		var terrain_pt=[];
 		
 		if (!this.started)
 		{
-			var retfmb = filterMouseButton(e, this.mouseButtonMask)
-			if (!retfmb[2]) {
-				return; 
-			}		
+			var retfmb;
+			if (!opt_nobuttons) {
+				retfmb = filterMouseButton(e, this.mouseButtonMask)
+				if (!retfmb[2]) {
+					// Allow actuation of permanent tool
+					return true;
+				}	
+			}	
 	
 			this.the_map.getTerrainPt([x, y], terrain_pt);
 			this.start_screen = [x, y];
@@ -75,7 +110,7 @@ function Pan(mouseButtonMask, p_mapctrl)
 		{ 	
 			this.started = false;
 			
-			if (this.the_map.finishPan(x, y, this.start_terrain, this.start_screen)) {
+			if (this.the_map.finishPan((x==0 ? this.last_pt[0] : x), (y==0 ? this.last_pt[1] : y), this.start_terrain, this.start_screen)) {
 				this.the_map.mapctrlsmgr.resetTransient();
 			}			
 			this.start_terrain = null;
@@ -87,10 +122,10 @@ function Pan(mouseButtonMask, p_mapctrl)
 
 	this.mousemove = function(e, target, x, y) 
 	{
-		var terrain_pt=[];
-
-		if (this.started)
-		{
+		var terrain_pt=[];		
+		// console.log(String.format("pan mousemove started:{0} x:{1} y:{2}",this.started, x, y));
+		if (this.started) {
+			this.last_pt = [x, y];
 			this.the_map.transientPan(x, y, this.start_terrain, this.start_screen);
 		}
 
@@ -102,34 +137,29 @@ function Pan(mouseButtonMask, p_mapctrl)
 
 extend(Pan, _Basetool);
 
-function Picker(mouseButtonMask, p_mapctrl, p_searchtolerance) 
+function Picker(mouseButtonMask, p_mapctrl) 
 {
 	this.getClassStr = function() {
 		return "Picker tool (Picker)";
 	};
 
 	this.mouseButtonMask = mouseButtonMask;
-	this.searchtolerance = p_searchtolerance;
 	this.name = 'picker';
 	this.the_map = p_mapctrl;
 	
-	this.setTolerance = function(p_tolvalue) {
-		this.searchtolerance = p_tolvalue;
-	}
-	this.getTolerance = function() {
-		return this.searchtolerance;
-	}
-	
-	this.mousedown = function(e, target, x, y) 
+	this.mousedown = function(e, target, x, y, opt_nobuttons) 
 	{
 		if (!this.mousedown_ocurred)
 		{
-			var retfmb = filterMouseButton(e, this.mouseButtonMask)
-			if (!retfmb[2]) {
-				return; 
-			}		
-			this.start_screen = [x, y];
-	
+			var retfmb;
+			if (!opt_nobuttons) {
+				retfmb = filterMouseButton(e, this.mouseButtonMask);
+				if (!retfmb[2]) {
+			// Allow actuation of permanent tool
+					return true; 
+				}	
+			}	
+			this.start_screen = [x, y];	
 			this.mousedown_ocurred = true;
 		}
 		
@@ -137,20 +167,31 @@ function Picker(mouseButtonMask, p_mapctrl, p_searchtolerance)
 		return true;
 	};
 	
-	this.mouseup = function(e, target, x, y) 
+	this.mouseup = function(e, target, x, y, null_nobuttons) 
 	{
 		if (this.mousedown_ocurred) {
 			
-			var func;
+			var lname, func, lnames = [], mu_prevcall_state = {};
 			
-			for (var lname in this.actions_per_evttype_per_layer['mouseup']) 
+			for (lname in this.actions_per_evttype_per_layer['mouseup']) 
 			{
 				if (!this.actions_per_evttype_per_layer['mouseup'].hasOwnProperty(lname)) {
 					continue;
 				}
-				
+				lnames.push(lname);
+			}
+			mu_prevcall_state.lnames = lnames;
+			for (var li=0; li < lnames.length; li++) {
+				lname = lnames[li];
 				func = this.actions_per_evttype_per_layer['mouseup'][lname];
-				func(this.the_map, x, y, lname, this.searchtolerance);
+				if (func) {
+					try {
+						func(this.the_map, x, y, lname, mu_prevcall_state);
+					} catch(e) {
+						console.warn(e);
+					}
+				}
+
 			}
 		}
 		this.mousedown_ocurred = false;
@@ -174,16 +215,19 @@ function Picker(mouseButtonMask, p_mapctrl, p_searchtolerance)
 		{
 			for (var lname in this.actions_per_evttype_per_layer['mousemove']) 
 			{
-
 				if (!this.actions_per_evttype_per_layer['mousemove'].hasOwnProperty(lname)) {
 					continue;
 				}
-
 				var func = this.actions_per_evttype_per_layer['mousemove'][lname];
-				func(this.the_map, x, y, lname, this.searchtolerance);
+				if (func) {
+					try {
+						func(this.the_map, x, y, lname);
+					} catch(e) {
+						console.warn(e);
+					}
+				}
 			}
 		}		
-		
 		// Allow actuation of permanent tool
 		return true;
 	};
@@ -210,7 +254,7 @@ function mouseWheelController(p_controls_mgr) {
 		//this.location.length = 0;
 	};
 	
-	this.mousewheel= function(e) 
+	this.mousewheel = function(e) 
 	{
 		let k;
 		let newscale = this.controls_mgr.the_map.getScale();
@@ -220,9 +264,11 @@ function mouseWheelController(p_controls_mgr) {
 		let delta = getWheelDelta(e);
 		let adelta = Math.abs(delta);
 		var op, target =  getTarget(e);
+		
+		finishEvent(e);
 
 		if (adelta < 5) {
-			return finishEvent(e);
+			return false;
 		}
 		
 		if (target.parentNode) {
@@ -234,14 +280,6 @@ function mouseWheelController(p_controls_mgr) {
 		var xcoord = e.pageX - op.offsetLeft;
 		var ycoord = e.pageY - op.offsetTop;
 		
-		e.cancelBubble=true;
-		try {
-			e.stopPropagation();
-		} catch(e) {
-			// fazer nada
-			var zz = null;
-		}
-			
 		k = 1 + adelta/200.0;
 			
 		if (delta > 0) {
@@ -250,50 +288,7 @@ function mouseWheelController(p_controls_mgr) {
 		else {
 			newscale *= k;
 		}
-		
-		//console.log("delta:"+k+", newsacel:"+newscale);
-		
-		/*
-		let t1, delta=0, doredraw;
-		
-			t1 = Date.now() * 1.0;
-			if (this.time_start < 0) {
-				this.time_start = t1;
-				delta = 0;
-			} else {
-				delta = t1 - this.time_start;
-				this.time_start = t1;
-			}
-
-		if (delta >= 0 && delta <= this.TIMEOUT) {
-			doredraw = true;
-		} else {
-			doredraw = false;
-		}
-
-		
-		this.controls_mgr.the_map.updateM_scrDiffFromLastSrvResponse();
-		this.controls_mgr.the_map.scrDiffFromLastSrvResponse.scaleFromCenter(xcoord, ycoord);
-		this.controls_mgr.the_map.changeScale(newscale, doredraw, pt[0], pt[1], this.TIMEOUT);
-		
-		if (doredraw) {
-			if (this.timerinterval != null) {
-				window.clearInterval(this.timerinterval);
-			}
-			this.timerinterval = window.setInterval(
-				(function(p_self) {
-					return function(e) {
-						p_self.testintervalF(e);
-					}
-				})(this),
-				this.TIMEOUT);
-		} else {
-			if (this.timerinterval != null) {
-				this.resetTimer();
-			}
-		}
-		* */
-		
+			
 		this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
 		
 		if (this.timerId != null) {
@@ -307,9 +302,245 @@ function mouseWheelController(p_controls_mgr) {
 			}, p_self.waitPeriodMsec);
 		})(this);
 					
-		return finishEvent(e);
+		return false;
 	}	
 }
+
+function copyTouch(touch, target) {
+	return { 
+		target: target,
+		identifier: touch.identifier, 
+		pageX: touch.pageX, 
+		pageY: touch.pageY,
+		clientX: touch.clientX, 
+		clientY: touch.clientY,
+		screenX: touch.screenX, 
+		screenY: touch.screenY
+	};
+}	
+
+function touchController(p_controls_mgr) {
+	
+	this.getClassStr = function() {
+		return "touchController";
+	};
+	
+	this.controls_mgr = p_controls_mgr;
+	this.timerId = null;
+	this.location = [];
+	this.waitPeriodMsec = 400;
+	
+	this.ongoingTouches = [];
+	
+	this.clearReference = function() {
+		if (this.timerId != null) {
+			window.clearTimeout(this.timerId);
+			this.timerId = null;
+		}
+	};
+	
+	this.ongoingTouchIndexById = function(idToFind) {
+		for (var i = 0; i < this.ongoingTouches.length; i++) {
+			var id = this.ongoingTouches[i].identifier;
+			if (id == idToFind) {
+				return i;
+			}
+		}
+		return -1;    // not found
+	};
+ 
+	this.touchstart = function(e) {
+		e.preventDefault();
+		let ret = null;
+		let touches = e.changedTouches;
+		let trg = getTarget(e);
+		
+		for (let i = 0; i < touches.length; i++) {
+			this.ongoingTouches.push(copyTouch(touches[i], trg));
+		}
+		if (this.ongoingTouches.length == 1) {
+			ret = this.ongoingTouches[0];
+		}
+		return ret;
+	};
+
+	this.touchmove = function(e) {
+		e.preventDefault();
+		let ret = null;
+		let idx, touches = e.changedTouches;
+		let trg = getTarget(e);
+
+		for (let i = 0; i < touches.length; i++) {
+			idx = this.ongoingTouchIndexById(touches[i].identifier);
+			if (idx >= 0) {
+				this.ongoingTouches.splice(idx, 1, copyTouch(touches[i], trg));
+			}
+		}
+
+		if (this.ongoingTouches.length == 1) {
+			ret = this.ongoingTouches[0];
+		} else if (this.ongoingTouches.length == 2) {
+			this.dozoom();
+		}
+		return ret;
+	};
+
+	this.touchend = function(e) {
+		e.preventDefault();
+		let ret = null, found = null;
+		let idx, touches = e.changedTouches;
+		let trg = getTarget(e);
+
+		for (let i = 0; i < touches.length; i++) {
+			idx = this.ongoingTouchIndexById(touches[i].identifier);
+			if (idx >= 0) {
+				if (found == null) {
+					found = copyTouch(touches[i], trg);
+				}
+				this.ongoingTouches.splice(idx, 1);
+			}
+		}
+		if (touches.length == 1) {
+			ret = found;
+		}
+		return ret;
+	};
+
+	this.dozoom = function() {
+		
+		let xcoord, ycoord, dx=null, dy=null, d, t;
+		let coords=[], minx=999999, miny=999999;
+		
+		if (this.ongoingTouches.length != 2) {
+			return;
+		};
+		
+		for (let i=0; i < this.ongoingTouches.length; i++) {
+			
+			t = this.ongoingTouches[i];
+			/*
+			if (t.layerX !== undefined && t.layerX != 0) {
+				xcoord = t.layerX;
+				ycoord = t.layerY;
+			} else if (t.offsetX !== undefined && t.offsetX != 0) {
+				xcoord = t.offsetX;
+				ycoord = t.offsetY;
+			} else if (t.clientX !== undefined && t.clientX != 0) {
+				xcoord = t.clientX;
+				ycoord = t.clientY;
+			} */
+			
+			getEvtCoords(t, t.target, coords);
+			
+			minx = Math.min(minx, coords[0]);
+			miny = Math.min(miny, coords[1]);
+			if (dx==null) {
+				dx = coords[0];
+			} else {
+				dx = Math.abs(dx - coords[0]);
+			}
+			if (dy==null) {
+				dy = coords[1];
+			} else {
+				dy = Math.abs(dy - coords[1]);
+			}
+		}
+		let newscale;
+		if (dx!=null && dy!=null) {	
+				
+			d = Math.sqrt(dx * dx + dy * dy);
+			newscale = 180000 / d;
+			
+			xcoord = minx + dx;
+			ycoord = miny + dy;
+			
+			this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
+			
+			if (this.timerId != null) {
+				window.clearTimeout(this.timerId);
+			}
+
+			(function(p_self) {
+				p_self.timerId =  window.setTimeout(function(e) {
+					p_self.controls_mgr.the_map.refresh(false);
+					p_self.clearReference();
+				}, p_self.waitPeriodMsec);
+			})(this);
+		}		
+	};
+}
+
+/*
+function gestureController(p_controls_mgr) {
+	
+	this.getClassStr = function() {
+		return "gestureController";
+	};
+	
+	this.controls_mgr = p_controls_mgr;
+	this.timerId = null;
+	this.location = [];
+	this.waitPeriodMsec = 400;
+	this.evCache = new Array();
+	this.prevDiff = -1;
+	
+	this.clearReference = function() {
+		if (this.timerId != null) {
+			window.clearTimeout(this.timerId);
+			this.timerId = null;
+		}
+	};
+	
+	this.remove_event = function(ev) {
+		for (var i = 0; i < this.evCache.length; i++) {
+			if (this.evCache[i].pointerId == ev.pointerId) {
+				this.evCache.splice(i, 1);
+				break;
+			}
+		}
+		if (this.evCache.length < 2) {
+			this.prevDiff = -1;
+		}
+	}
+
+	this.update_event = function(ev) {
+		for (var i = 0; i < this.evCache.length; i++) {
+			if (ev.pointerId == this.evCache[i].pointerId) {
+				this.evCache[i] = ev;
+				break;
+			}
+		}
+	};	
+ 
+	this.pointerdown = function(e) {
+		console.log("pointerdown");
+		console.log(e);
+		this.evCache.push(e);
+		return (this.evCache.length == 1);
+	};
+
+	this.pointermove = function(e) {
+		this.update_event(e);
+		return (this.evCache.length == 1);
+	};
+
+	this.pointerup = function(e) {
+		this.remove_event(e);
+		return (this.evCache.length == 0);
+	};
+
+	this.dopan= function(e) 
+	{
+		// pass
+}		
+	this.dozoom= function(e) 
+	{
+		// pass
+	
+
+	}	
+}
+*/
 
 // baseclass intended for extension
 function _MeasureSegment(mouseButtonMask, p_mapctrl) {
@@ -333,14 +564,18 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 		this.start_map.length = 0;
 	};
 		
-	this.mousedown = function(e, target, x, y) 
+	this.mousedown = function(e, target, x, y, opt_nobuttons) 
 	{
 		if (!this.mousedown_ocurred)
 		{
-			var retfmb = filterMouseButton(e, this.mouseButtonMask)
-			if (!retfmb[2]) {
-				return; 
-			}		
+			var retfmb;
+			if (!opt_nobuttons) {
+				retfmb = filterMouseButton(e, this.mouseButtonMask)
+				if (!retfmb[2]) {
+					// Cancel actuation of permanent tool
+					return false;
+				}		
+			}
 			this.start_screen = [x, y];
 
 			this.the_map.getTerrainPt(this.start_screen, this.start_map);
@@ -369,7 +604,7 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 				// only visible layers are processed
 				if (drawable_layer_lst.indexOf(lname) >= 0) {
 					func = this.actions_per_evttype_per_layer['mouseup'][lname];
-					func(this.the_map, x, y, lname, this.searchtolerance);
+					func(this.the_map, x, y, lname);
 				}
 			}
 			
@@ -413,7 +648,7 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 				}
 
 				func = this.actions_per_evttype_per_layer['mousemove'][lname];
-				func(this.the_map, x, y, lname, this.searchtolerance);
+				func(this.the_map, x, y, lname);
 			}
 			
 			// default tool behaviour
@@ -518,7 +753,7 @@ function MapControlsMgr(p_the_map) {
 		throw new Error(this.msg("NULLMAP"));
 	
 	this.the_map = p_the_map;
-	this.tools_searchradius = 1.0;
+	this.tools_searchradius_func = 1.0;
 	this.tools_controlwidgets = 'none';
 	
 	this.alltoolctrls = {};
@@ -530,21 +765,54 @@ function MapControlsMgr(p_the_map) {
 
 	this.visibility_widget_name = null;
 	this.widgetnames_hide_during_refresh = [];
+	this.widgetnames_hide_small_scale = [];
 	
 	this.mouseWheelCtrler = new mouseWheelController(this);
+	//this.gestureCtrler = new gestureController(this);
+	this.touchController = new touchController(this);
 	this.resetTransient = function() {
 		// nada
 	};
+
+	this.searchtolerance_func = null;
+	this.searchtolerance = null;
 	
+	this.setTolerance = function(p_tolvalue) {
+		this.searchtolerance = p_tolvalue;
+	};
+	this.clearTolerance = function() {
+		this.searchtolerance = null;
+	};
+	this.getTolerance = function(opt_scaleval) {
+		let ret = null;
+		if (this.searchtolerance) {
+			ret = this.searchtolerance;
+		} else {
+			if (opt_scaleval) {
+				ret = this.searchtolerance_func(opt_scaleval);
+			} else {
+				ret = this.searchtolerance_func(this.the_map.getScale());
+			}
+		}
+		return ret;
+	};
+
 	this.readConfig = function(p_initconfig) 
 	{		
 		var cobj;
 		
-		if (p_initconfig["searchradius"] !== undefined && p_initconfig["searchradius"] != null) {
-			this.tools_searchradius = parseFloat(p_initconfig["searchradius"]);
+		if (p_initconfig["searchtolerance"] !== undefined && p_initconfig["searchtolerance"] != null) {
+			this.searchtolerance = p_initconfig["searchtolerance"]; // function of mapscale value
 		} else {
-			this.tools_searchradius = 2;
+			this.searchtolerance = 2;
 		}
+		if (p_initconfig["searchtolerance_func"] !== undefined && p_initconfig["searchtolerance_func"] != null) {
+			this.searchtolerance_func = p_initconfig["searchtolerance_func"]; // function of mapscale value
+			this.searchtolerance = null;
+		} else {
+			this.searchtolerance_func = null;
+		}
+		
 		if (p_initconfig["controlwidgets"] !== undefined && p_initconfig["controlwidgets"] != null) {
 			this.tools_controlwidgets = p_initconfig["controlwidgets"];
 		}
@@ -564,6 +832,9 @@ function MapControlsMgr(p_the_map) {
 		if (p_initconfig["widgetnames_hide_during_refresh"] !== undefined && p_initconfig["widgetnames_hide_during_refresh"] != null) {
 			this.widgetnames_hide_during_refresh = p_initconfig["widgetnames_hide_during_refresh"];
 		}
+		if (p_initconfig["widgetnames_hide_small_scale"] !== undefined && p_initconfig["widgetnames_hide_small_scale"] != null) {
+			this.widgetnames_hide_small_scale = p_initconfig["widgetnames_hide_small_scale"];
+		}
 		
 		if (p_initconfig["tools"] !== undefined && p_initconfig["tools"] != null) {
 			cobj = p_initconfig["tools"];
@@ -575,7 +846,7 @@ function MapControlsMgr(p_the_map) {
 								p_self.addTool(new Pan(MOUSEBTN_LEFT, p_self.the_map));
 								break;
 							case "picker":
-								p_self.addTool(new Picker(MOUSEBTN_LEFT, p_self.the_map, p_self.tools_searchradius));
+								p_self.addTool(new Picker(MOUSEBTN_LEFT, p_self.the_map));
 								break;
 							case "measuresegment":
 								p_self.addTool(new _MeasureSegment(MOUSEBTN_LEFT, p_self.the_map));
@@ -610,16 +881,11 @@ function MapControlsMgr(p_the_map) {
 						);
 						
 						// layers to be spatialindexed
-						this.the_map.setLayernameAsIndexable(tla_layer_name);
-							
+						this.the_map.setLayernameAsIndexable(tla_layer_name);							
 					}
-				}
-				
+				}			
 			}
 		}
-		
-		
-		
 	};
 	
 	this.getControlWidgetsModeStr = function() {
@@ -671,19 +937,21 @@ function MapControlsMgr(p_the_map) {
 			
 			var mapctrl = this.the_map;
 			
-			attEventHandler(topdiv, 
-					'mouseup', 
-					function (e) {
-						mapctrl.changeScale(mapctrl.getScale() / 2.0)
-					}			
-			);
-			attEventHandler(botdiv, 
-					'mousedown', 
-					function (e) {
-						mapctrl.changeScale(mapctrl.getScale() * 2.0)
-					}			
-			);
-
+			(function(p_mapctrl) {
+				attEventHandler(topdiv, 
+						'mouseup', 
+						function (e) {
+							p_mapctrl.changeScale(p_mapctrl.getScale() / 2.0)
+						}			
+				);
+				attEventHandler(botdiv, 
+						'mousedown', 
+						function (e) {
+							p_mapctrl.changeScale(p_mapctrl.getScale() * 2.0)
+						}			
+				);
+			})(mapctrl);
+			
 			spanplus.appendChild(spplustxt);
 			topdiv.appendChild(spanplus);
 
@@ -777,13 +1045,16 @@ function MapControlsMgr(p_the_map) {
 		}
 	};
 	
-	this.mousedown = function(e) {
+	this.mousedown = function(e, opt_nobuttons) {
 		
 		if (!e) var e = window.event;
-		e.cancelBubble=true;
-		e.stopPropagation();
-		var op, target =  getTarget(e);
 		
+		var op, target =  getTarget(e);
+		let coords=[];
+		
+		finishEvent(e);
+		
+		/*
 		if (target.parentNode) {
 			op = target.parentNode;
 		} else {
@@ -792,24 +1063,39 @@ function MapControlsMgr(p_the_map) {
 		
 		var xcoord = e.pageX - op.offsetLeft;
 		var ycoord = e.pageY - op.offsetTop;
+		*/
+
+/*
+		if (e.layerX !== undefined && e.layerX != 0) {
+			xcoord = e.layerX;
+			ycoord = e.layerY;
+		} else if (e.offsetX !== undefined && e.offsetX != 0) {
+			xcoord = e.offsetX;
+			ycoord = e.offsetY;
+		} else if (e.clientX !== undefined && e.clientX != 0) {
+			xcoord = e.clientX;
+			ycoord = e.clientY;
+		}
+*/		
+		/*console.log(e);
+		console.log(String.format("x,y: {0} {1}", xcoord, ycoord));*/
+		getEvtCoords(e, target, coords);
 		
 		var ret, pt, at = this.getActiveTool();
-		if (at && typeof at.mousedown == 'function')
-		{
-			ret = at.mousedown(e, target, xcoord, ycoord);
+		if (at && typeof at.mousedown == 'function') {
+			ret = at.mousedown(e, target, coords[0], coords[1], opt_nobuttons);
 		}
 		pt = this.permanenttool;
-		if (ret && pt && typeof pt.mousedown == 'function')
-		{
-			pt.mousedown(e, target, xcoord, ycoord);
+		if (ret && pt && typeof pt.mousedown == 'function') {
+			pt.mousedown(e, target, coords[0], coords[1], opt_nobuttons);
 		}		
 		
-		return finishEvent(e);
+		return false;
 	};
 
-	this.mousemove = function(evt) {
+	this.mousemove = function(evt, opt_nobuttons) {
 		
-		var e, evt, target, tmp;
+		var e, evt, target, tmp, coords=[];
 		if (!evt) evt = window.event;
 		
 		if (evt.detail !== undefined && evt.detail != null && typeof evt.detail == 'object') 
@@ -826,35 +1112,24 @@ function MapControlsMgr(p_the_map) {
 			target =  getTarget(e);
 		}
 		
-		evt.cancelBubble=true;
-		evt.stopPropagation();
+		finishEvent(e);
+		getEvtCoords(e, target, coords);
 
 		var tname, pn, sw, y, fname, val, strwid;
-		var op;
-		
-		if (target.parentNode !== undefined && target.parentNode != null) {
-			op = target.parentNode;
-		} else {
-			op = target;
-		}
-		
-		var xcoord = e.pageX - op.offsetLeft;
-		var ycoord = e.pageY - op.offsetTop;
+
 		var terrain_pt = [];
 
 		var ret, pt, at = this.getActiveTool();
 		
-		if (at && typeof at.mousemove == 'function')
-		{
-			ret = at.mousemove(e, target, xcoord, ycoord);
+		if (at && typeof at.mousemove == 'function') {
+			ret = at.mousemove(e, target, coords[0], coords[1]);
 		}	
 		pt = this.permanenttool;
-		if (ret && pt && typeof pt.mousemove == 'function')
-		{
-			pt.mousemove(e, target, xcoord, ycoord);
+		if (ret && pt && typeof pt.mousemove == 'function') {
+			pt.mousemove(e, target, coords[0], coords[1]);
 		}	
 		
-		this.the_map.getTerrainPt([xcoord, ycoord], terrain_pt);
+		this.the_map.getTerrainPt([coords[0], coords[1]], terrain_pt);
 		this.mousecoordswidgetids.forEach(
 			function (item, index) {
 				var wid = document.getElementById(item);
@@ -864,37 +1139,28 @@ function MapControlsMgr(p_the_map) {
 			}
 		);
 
-		return finishEvent(evt);
+		return false;
 	};
 	
 	this.mouseup = function(e) {
 		
 		if (!e) var e = window.event;
-		e.cancelBubble=true;
-		e.stopPropagation();
-		var op, target =  getTarget(e);
+		let coords=[], target =  getTarget(e);
 		
-		if (target.parentNode) {
-			op = target.parentNode;
-		} else {
-			op = target;
-		}
-		
-		var xcoord = e.pageX - op.offsetLeft;
-		var ycoord = e.pageY - op.offsetTop;
+		finishEvent(e);
+		getEvtCoords(e, target, coords);
 				
 		var ret, pt, at = this.getActiveTool();
-		if (at && typeof at.mouseup == 'function')
-		{
-			ret = at.mouseup(e, target, xcoord, ycoord);
+		if (at && typeof at.mouseup == 'function') {
+			ret = at.mouseup(e, target, coords[0], coords[1]);
 		}
 		pt = this.permanenttool;
 		if (ret && pt && typeof pt.mouseup == 'function')
 		{
-			pt.mouseup(e, target, xcoord, ycoord);
+			pt.mouseup(e, target, coords[0], coords[1]);
 		}
 		
-		return finishEvent(e);
+		return false;
 	};
 	
 	this.mouseleave = function(e) {

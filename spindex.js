@@ -1,4 +1,5 @@
-
+ //vn = 0;
+ 
 function SpatialIndexer(p_mapcontroller, p_step) {
 	
 	this.getClassStr = function() {
@@ -42,6 +43,12 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 	this.width = parseInt(Math.ceil(cdims[0] / this.step));
 	this.height = parseInt(Math.ceil(cdims[1] / this.step));
 	
+	this.resize = function() {
+		var cdims = this.mapcontroller.getGraphicController().getCanvasDims();
+		
+		this.width = parseInt(Math.ceil(cdims[0] / this.step));
+		this.height = parseInt(Math.ceil(cdims[1] / this.step));
+	};
 	this.clear = function() {
 		this.matrix = {};
 		this.added_points_count = 0;
@@ -64,11 +71,17 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		if (this.matrix[p_layername][idx].indexOf(p_objid) < 0) {			
 			this.matrix[p_layername][idx].push(p_objid);
 		}
+		
+		/*
+		if (p_objid == 6536) {
+			//vn++;
+			console.log("add2mat:"+JSON.stringify([p_row, p_col,  p_layername, p_objid]));
+		}
+		* */
 	};
 
 	// TODO
-	this.addPoly = function(p_scrcoords, p_path_levels, p_layername, p_objid) 
-	{		
+	this.addPoly = function(p_scrcoords, p_path_levels, p_layername, p_objid) {		
 		var env = [null, null, null, null];
 		
 		function cycleCoords(pp_coords, p_spatindex, p_envidxs, pp_objid) 
@@ -190,6 +203,11 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		}
 
 		var has_points = false;
+		/*
+		if (p_objid == 6536) {
+			console.log([p_objid,p_path_levels]);
+		}*/
+		
 		switch (p_path_levels)
 		{			
 			case 1:
@@ -221,49 +239,65 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 				break;
 		}	
 
-		var cell, idx, insidx, found_count = 0;
-		var cols_to_fill = [];
+		var cell, tmpcell, idx, tmpidx, insidx, found_count = 0;
+		var cells_to_fill = [];
+		var found_bool = false;
+		var doregistervoids = false;
+		var dofillvoids = false;
+		
 		var layercell = this.matrix[p_layername];
+
+		/*
+		if (p_objid == 6536) {
+			console.log(env);
+		}*/
 		
 		if (layercell!=null && has_points) 
 		{
 			for (var row=env[1]; row<=env[3]; row++) 
 			{
-				cols_to_fill.length = 0;
 				for (var col=env[0]; col<=env[2]; col++) 
 				{
 					idx = (row*this.width)+col;
 					cell = layercell[idx];
 
+					dofillvoids = false;
 					if (cell != null && cell.indexOf(p_objid) >= 0) {
-						if (found_count == 0 || cols_to_fill.length > 0) {
-							found_count++;
+						if (!found_bool) {
+							if (doregistervoids && cells_to_fill.length > 0) {
+								dofillvoids = true;
+							}
+							doregistervoids = false;
+							found_bool = true;
 						}
 					} else {
-						if (found_count == 1) {
-							cols_to_fill.push(col);
-						} 
+						if (found_bool) {
+							doregistervoids = true;
+							found_bool = false;
+						}
 					}
 					
-					if (found_count == 2) 
-					{
-						if (cell == null) {
-							this.matrix[p_layername][idx] = [];
-							cell = this.matrix[p_layername][idx];
-						}
-						for (var k=0; k<cols_to_fill.length; k++) {
-							insidx = (row*this.width)+cols_to_fill[k];
-							inscell = this.matrix[p_layername][insidx];
-							if (inscell == null) {
-								this.matrix[p_layername][insidx] = [];
-								inscell = this.matrix[p_layername][insidx]
-							}
-							inscell.push(p_objid);
-						}
-						cols_to_fill.length = 0;
-						found_count = 0;
+					if (doregistervoids) {
+						cells_to_fill.push(idx);
 					}
+					
+					if (dofillvoids) {
+						for (var k=0; k<cells_to_fill.length; k++) {
+							tmpidx = cells_to_fill[k];
+							tmpcell = layercell[tmpidx];
+							if (tmpcell == null) {
+								this.matrix[p_layername][tmpidx] = [];
+								tmpcell = this.matrix[p_layername][tmpidx];
+							}
+							if (tmpcell.indexOf(p_objid) < 0) {
+								tmpcell.push(p_objid);
+							}
+						}
+						cells_to_fill.length = 0;
+					}
+
 				}
+				cells_to_fill.length = 0;
 			}
 			
 		}
@@ -404,7 +438,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		this.added_points_count++;
 	};
 
-	this.findNearestObject = function(p_scr_pt, p_pix_radius, p_layername, opt_forcemx) 
+	this.findNearestObject = function(p_scr_pt, p_pix_radius, p_layername, opt_forcemx, opt_verbose) 
 	{
 		var col = Math.floor(p_scr_pt[0] / this.step);
 		var row = Math.floor(p_scr_pt[1] / this.step);
@@ -502,16 +536,18 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			aux: null
 		};
 		
-		for (var i=mincol; i<maxcol; i++) 
-		{
-			for (var j=minrow; j<maxrow; j++) 
-			{
+		for (var i=mincol; i<maxcol; i++) {
+			for (var j=minrow; j<maxrow; j++) {
 				check(this.matrix, this.width, this.mapcontroller, i, j, 
 						p_scr_pt, p_pix_radius, p_layername, checkobj);
 			}
 		}
 		
-		//console.log(JSON.stringify(checkobj, 2))
+		/*
+		if (checkobj.found_oid == null) {
+			console.log([minrow,maxrow,mincol,maxcol]);
+			console.log(JSON.stringify(checkobj, 2));
+		} */
 		
 		return checkobj.found_oid;
 	};

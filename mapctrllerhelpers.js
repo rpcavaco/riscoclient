@@ -12,7 +12,8 @@ var MapCtrlConst = {
 	REFRESH_RASTERS: 4,
 	MINSCALE: 100,
 	MAXLAYERCOUNT: 300,
-	TOCBCKGRDCOLOR: "rgba(24, 68, 155, 0.85)"
+	TOCBCKGRDCOLOR: "rgba(24, 68, 155, 0.85)",
+	DEFAULT_USE_SCREEN_COORD_SPACE: true
 };
 
 // opt_alternate_Layer - indica se o filtro se destina a ser aplicado APENAS
@@ -225,6 +226,60 @@ function scaleLevelFromScaleValue(p_sclvalue) {
 	return ret;
 };
 
+function scaleValueFromTMSZoomLevel(p_zoomlvl) {
+	var ret = null;
+	var scales = [125, 250, 500, 1000, 2000, 4000, 8000, 15000, 35000, 70000, 150000,
+			250000, 500000, 1000000, 2000000, 4000000, 10000000];
+	var sclidx = 22 - p_zoomlvl;
+	if (sclidx >= 0 && sclidx < scales.length) {
+		ret = scales[sclidx];
+	}
+	
+	return ret;
+};
+
+function TMSZoomLevelFromScaleValue(p_scalevl) {
+	let ret = null;
+	if (p_scalevl <= 125) {
+		ret = 22;
+	} else if (p_scalevl <= 250) {
+		ret = 21;
+	} else if (p_scalevl <= 500) {
+		ret = 20;
+	} else if (p_scalevl <= 1000) {
+		ret = 19;
+	} else if (p_scalevl <= 2000) {
+		ret = 18;
+	} else if (p_scalevl <= 4000) {
+		ret = 17;
+	} else if (p_scalevl <= 8000) {
+		ret = 16;
+	} else if (p_scalevl <= 15000) {
+		ret = 15;
+	} else if (p_scalevl <= 35000) {
+		ret = 14;
+	} else if (p_scalevl <= 70000) {
+		ret = 13;
+	} else if (p_scalevl <= 150000) {
+		ret = 12;
+	} else if (p_scalevl <= 250000) {
+		ret = 11;
+	} else if (p_scalevl <= 500000) {
+		ret = 10;
+	} else if (p_scalevl <= 1000000) {
+		ret = 9;
+	} else if (p_scalevl <= 2000000) {
+		ret = 8;
+	} else if (p_scalevl <= 4000000) {
+		ret = 7;
+	} else if (p_scalevl <= 10000000) {
+		ret = 6;
+	} else {
+		ret = 5;
+	}
+	return ret;
+};
+
 function topLeftCoordsFromRowCol(p_col, p_row, p_rasterSpecs, out_terraincoords) {
 	
 	out_terraincoords.length = 0;	
@@ -268,7 +323,25 @@ function Envelope2D() {
 	this.maxx = 0;
 	this.maxy = 0;
 	
+	this.getArray = function() {
+		return [this.minx, this.miny, this.maxx, this.maxy];
+	}
+	
 	this.setMinsMaxs = function(p_minx, p_miny, p_maxx, p_maxy) {
+		
+		if (isNaN(p_minx)) {
+			throw new Error("Envelope.setMinsMaxs: p_minx is NaN");
+		}
+		if (isNaN(p_miny)) {
+			throw new Error("Envelope.setMinsMaxs: p_miny is NaN");
+		}
+		if (isNaN(p_maxx)) {
+			throw new Error("Envelope.setMinsMaxs: p_maxx is NaN");
+		}
+		if (isNaN(p_maxy)) {
+			throw new Error("Envelope.setMinsMaxs: p_maxy is NaN");
+		}
+
 		this.minx = Math.min(p_minx, p_maxx);
 		this.maxx = Math.max(p_minx, p_maxx);
 		this.miny = Math.min(p_miny, p_maxy);
@@ -312,6 +385,7 @@ function Envelope2D() {
 	{
 		var w = this.maxx - this.minx;
 		var h = this.maxy - this.miny;
+		
 		out_pt[0] = this.minx + (w / 2.0);
 		out_pt[1] = this.miny + (h / 2.0);		
 	};
@@ -404,6 +478,26 @@ function RetrievalController() {
 	this.getRasterCount = function() {
 		return this._ordrasterlayernames.length;
 	};
+	this.getLayerNames = function(p_retlist, opt_tolower) 
+	{
+		if (this.dolog) {
+			console.trace("getLayerNames");
+		}
+		p_retlist.length = 0;
+		var grn_i=0;
+		while (this._orderedlayernames[grn_i] !== undefined && this._orderedlayernames[grn_i] != null) 
+		{
+			if (opt_tolower) {
+				p_retlist.push(this._orderedlayernames[grn_i].toLowerCase());
+			} else {
+				p_retlist.push(this._orderedlayernames[grn_i]);
+			}
+			grn_i++;
+			if (grn_i > MapCtrlConst.MAXLAYERCOUNT) {
+				throw new Error("getLayerNames: excess layer name cycling");
+			}
+		}
+	};
 	this.getRasterNames = function(p_retlist, opt_tolower) 
 	{
 		if (this.dolog) {
@@ -420,7 +514,7 @@ function RetrievalController() {
 			}
 			grn_i++;
 			if (grn_i > MapCtrlConst.MAXLAYERCOUNT) {
-				throw new Error("excess layer name cycling");
+				throw new Error("getRasterNames: excess layer name cycling");
 			}
 		}
 	};

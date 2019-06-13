@@ -168,6 +168,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	this.canvasDims[1] = canvasDiv.clientHeight;
 	canvasDiv.style.position = 'relative'; 
 	
+	/*
+	console.log(this.canvasDims);
+	console.log(canvasDiv.getBoundingClientRect());
+	*/	
+	
 	var li, bzi, ctx, canvasel, displayer, cnvname;
 	
 	if (opt_basezindex) {
@@ -175,6 +180,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	} else {
 		bzi = 1;
 	}
+
+	canvasDiv.addEventListener("resize", function(e) { console.log("resize DIV"); });
 	
 	for (li=0; li<this._ctxorder.length; li++) 
 	{
@@ -187,6 +194,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		canvasel.setAttribute('width', this.canvasDims[0]);
 		canvasel.setAttribute('height', this.canvasDims[1]);
 		
+		canvasel.addEventListener("resize", function(e) { console.log("resize canvas "+cnvname); });
+
 		this.maxzindex = li+bzi;
 		
 		canvasDiv.appendChild(canvasel);
@@ -197,10 +206,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	    }
 	    
 	    // Transient layer style
+	    /*
 	    if (displayer == "transient") {
 	    	this._ctxdict[displayer].strokeStyle = '#f00'; 
 	    	this._ctxdict[displayer].fillStyle = 'rgba(0, 229, 130, 0.5)'; 
-	    }
+	    }*/
 	}
 	this.topcanvasel = canvasel;
 
@@ -310,7 +320,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			dlayer = this.activeDisplayLayer;
 		}
 		if (this._ctxdict[dlayer] === undefined) {
-			console.log("missing "+dlayer+' opt:'+opt_displaylayer);
+			console.trace("missing dlayer '"+dlayer+"' opt:'"+opt_displaylayer+"'");
 			throw new Error('getStrokeStyle: missing layer');
 		}
 		return this._ctxdict[dlayer].strokeStyle;
@@ -376,6 +386,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		} else {
 			dlayer = this.activeDisplayLayer;
 		}
+		//console.log("dlayer:"+dlayer+" style:"+p_style);
 		this._ctxdict[dlayer].fillStyle = p_style;
 	};
 	this.setLineWidth = function(p_val, opt_displaylayer) {
@@ -418,8 +429,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			this._ctxdict[dlayer].font = p_style;
 		}
 		
-	};
-	
+	};	
 	this.setTextAlign = function(p_style, opt_displaylayer) {
 		var dlayer;
 		if (opt_displaylayer) {
@@ -641,12 +651,13 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				case "bgstyle":
 					this.setLabelBackground(p_styleobj[attr], opt_displaylayer);
 					break;
+				/*
 				case "marker":
 					this.setMarker(p_styleobj[attr], opt_displaylayer);
 					break;
 				case "markersize":
 					this.setMarkerSize(p_styleobj[attr], opt_displaylayer);
-					break;
+					break;*/
 			}
 		}
 		if (out_styleflags.stroke === undefined ||  out_styleflags.fill === undefined || (!out_styleflags.stroke && !out_styleflags.fill)) {
@@ -696,7 +707,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 		var prevmidpt=[0,0], midpt=[0,0], prevpt=[0,0], pt=[];
 
-		if (retgtype = "POINT" && p_markerfunc != null) {
+		if (retgtype == "POINT" && p_markerfunc != null) {
 
 			if (is_inscreenspace) {
 				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
@@ -1249,6 +1260,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			if (typeof p_canvas != 'object') {
 				throw new Error("** resizeCanvasToDisplaySize: canvas element not defined or invalid.");
 			} 
+			
 			var width  = p_canvas.clientWidth | 0;
 			var height = p_canvas.clientHeight | 0;
 			if (p_canvas.width !== width ||  p_canvas.height !== height) {
