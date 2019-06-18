@@ -675,11 +675,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	// 	 is_inscreenspace: object defined in screen space coordinates
 	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
 	// 	 dolog: boolean flag -- log messages to console
-	//	 do_forcemx - force the use of transformation matrix
 											
 	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
 					p_markerfunc, is_inscreenspace, opt_displaylayer, 
-					dolog, do_forcemx, p_mapctrlr, p_featattrs) 
+					dolog, p_featattrs) 
 	{
 		let dlayer, retgtype = "NONE";
 		if (opt_displaylayer) {
@@ -710,12 +709,13 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (retgtype == "POINT" && p_markerfunc != null) {
 
 			if (is_inscreenspace) {
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
+				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
+				this._mapcontroller.getScrDiffPt(points[cpi], points[cpi+1], pt);
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt);
 			}
 
-			p_markerfunc(this._ctxdict[dlayer], pt, p_mapctrlr, p_featattrs);
+			p_markerfunc(this._ctxdict[dlayer], pt, this._mapcontroller, p_featattrs);
 			
 		} else {
 		
@@ -726,9 +726,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				pt.length = 2;
 				
 				if (is_inscreenspace) {
-					this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[cpi], p_points[cpi+1], pt);
+					//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[cpi], p_points[cpi+1], pt);
+					this._mapcontroller.getScrDiffPt(p_points[cpi], p_points[cpi+1], pt);
 				} else {
-					this._mapcontroller.getScreenPtFromTerrain(p_points[cpi], p_points[cpi+1], pt, do_forcemx);
+					this._mapcontroller.getScreenPtFromTerrain(p_points[cpi], p_points[cpi+1], pt);
 				}
 
 				if (this.markVertices) {
@@ -790,10 +791,9 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	// 	 is_inscreenspace: object defined in screen space coordinates
 	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
 	// 	 dolog: boolean flag -- log messages to console
-	//	 do_forcemx - force the use of transformation matrix
 
 	this.drawMultiplePath = function(p_parts_of_points, p_stroke, p_fill, 
-			is_inscreenspace, opt_displaylayer, dolog, do_forcemx) 
+			is_inscreenspace, opt_displaylayer, dolog) 
 	{
 		if (dolog) {
 			console.log('---- p_parts_of_points -----');
@@ -814,6 +814,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 		this._ctxdict[dlayer].beginPath();
 		var pt=[], points;
+		
+		if (false && x_oid == 6536) {
+			console.log("is_inscreenspace:"+is_inscreenspace+" "+dlayer);
+		}
 
 		for (var pidx=0; pidx<p_parts_of_points.length; pidx++)
 		{
@@ -838,9 +842,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				pt.length = 2;
 
 				if (is_inscreenspace) {
-					this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt);
+					//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt, (x_oid == 6536));
+					this._mapcontroller.getScrDiffPt(points[cpi], points[cpi+1], pt);
 				} else {
-					this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt, do_forcemx);
+					this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt);
 				}
 
 				if (cpi==0) {
@@ -877,12 +882,9 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	// 	 is_inscreenspace: object defined in screen space coordinates
 	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
 	// 	 dolog: boolean flag -- log messages to console
-	//   opt_mapctrlr: optional mapcontroller, to gain access to screen transformation parameters: if null,
-	//     p_points coordinates are supposed to be in screen units
-	//	 do_forcemx - force the use of transformation matrix
 											
 	this.drawMultiplePathCollection = function(p_part_collection, p_stroke, p_fill, 
-			is_inscreenspace, opt_displaylayer, dolog, opt_mapctrlr, do_forcemx) 
+			is_inscreenspace, opt_displaylayer, dolog) 
 	{
 		
 		if (p_part_collection.length < 1) {
@@ -921,9 +923,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 					pt.length = 2;
 
 					if (is_inscreenspace) {
-						this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt);
+						// this._mapcontroller.scrDiffFromLastSrvResponse.getPt(points[cpi], points[cpi+1], pt);
+						this._mapcontroller.getScrDiffPt(points[cpi], points[cpi+1], pt);
 					} else {
-						this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt, do_forcemx);
+						this._mapcontroller.getScreenPtFromTerrain(points[cpi], points[cpi+1], pt);
 					}
 					
 					if (cpi==0) {
@@ -956,7 +959,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	this.drawCenteredRect = function(p_cx, p_cy, p_width, p_height, 
 			p_stroke, p_fill, 
 			is_inscreenspace, 
-			opt_displaylayer, do_forcemx) {
+			opt_displaylayer) {
 				
 		var dlayer, pt=[];
 		if (opt_displaylayer) {
@@ -968,9 +971,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		pt.length = 2;
 
 		if (is_inscreenspace) {
-			this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
+			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
+			this._mapcontroller.getScrDiffPt(p_cx, p_cy, pt);
 		} else {
-			this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt, do_forcemx);
+			this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt);
 		}
 		
 		if (p_stroke) {
@@ -983,7 +987,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	
 	this.drawCrossHairs = function(p_x, p_y, p_stroke, p_fill, 
 			p_size, is_inscreenspace, 
-			opt_displaylayer, do_forcemx) 
+			opt_displaylayer) 
 	{
 		var dlayer, pt=[], cpt=[];
 		if (opt_displaylayer) {
@@ -999,9 +1003,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
 		
 			// vertical
@@ -1031,7 +1036,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 	this.drawDiamond = function(p_x, p_y, p_stroke, p_fill, 
 			p_size, is_inscreenspace,
-			opt_displaylayer, do_forcemx) 
+			opt_displaylayer) 
 	{
 		var dlayer, pt=[];
 		if (opt_displaylayer) {
@@ -1046,9 +1051,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
 
 			this._ctxdict[dlayer].beginPath();
@@ -1074,7 +1080,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 	this.drawSquare = function(p_x, p_y, p_stroke, p_fill, 
 		p_size, is_inscreenspace,
-		opt_displaylayer, do_forcemx) 
+		opt_displaylayer) 
 	{
 		var pt, sz;
 
@@ -1092,9 +1098,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
 
 			// vertical
@@ -1120,7 +1127,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	};
 
 	this.drawCircle = function(p_cx, p_cy, p_radius, p_stroke, p_fill, 
-		is_inscreenspace, opt_displaylayer, do_forcemx) 
+		is_inscreenspace, opt_displaylayer) 
 	{
 		var dlayer, rad, pt=[];
 		if (opt_displaylayer) {
@@ -1134,10 +1141,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		{
 			if (is_inscreenspace) {
 				rad = p_radius;
-				this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
+				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
+				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
 			} else {
 				rad = this._mapcontroller.m * p_radius;
-				this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt);
 			}
 			
 			this._ctxdict[dlayer].beginPath();
@@ -1154,7 +1162,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 	this.drawRect = function(p_llx, p_lly, p_width, p_height, p_stroke, p_fill, 
 		is_inscreenspace,
-		opt_displaylayer, do_forcemx) 
+		opt_displaylayer) 
 	{
 		var pt, sz;
 
@@ -1174,7 +1182,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				cpt[0] = p_llx;
 				cpt[1] = p_lly; 
 			} else {
-				this._mapcontroller.getScreenPtFromTerrain(p_llx, p_lly, cpt, do_forcemx);
+				this._mapcontroller.getScreenPtFromTerrain(p_llx, p_lly, cpt);
 			}
 
 			// vertical
@@ -1210,7 +1218,17 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 		
 		var pt = [];
-		this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
+		
+		var is_inscreenspace = false;
+		
+		if (is_inscreenspace) {
+			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_terrx, p_terry, pt);
+			this._mapcontroller.getScrDiffPt(p_terrx, p_terry, pt);
+		} else {
+			this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
+		}
+			
+		//this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
 		
 		var ctxw = p_width * this._mapcontroller.getScreenScalingFactor();
 		var ctxh = p_height * this._mapcontroller.getScreenScalingFactor();

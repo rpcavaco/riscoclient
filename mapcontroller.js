@@ -153,9 +153,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.ny = 0;
 	this.lang = "pt";
 	this.i18n_text = null;
-	this._terrainToScreenMx = null;
-	this._screenToTerrainMx = null;
-	this.useMatrix = false;
 	this.features = {};
 	
 	this.images = {};
@@ -208,6 +205,23 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.pixsz = p_data_obj.pxsz;
 		}
 	};
+	this.transformsQueue = {
+		_queue: [],
+		transientTransform: new MapAffineTransformation(),
+		checkToStore: function() {
+			if (this.transientTransform.hasChanged()) {
+				this.transientTransform.resetChangedFlag();
+				this._queue.push(clone(this.transientTransform));
+			}
+		},
+		getLastStored: function() {
+			let ret = null;
+			if (this._queue.length > 0) {
+				ret = this._queue[this._queue.length-1];
+			}
+			return ret;
+		}
+	};
 	
 	this.style_visibility = null;
 	
@@ -231,77 +245,30 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		})(this);
 	};
 	
-	// scrDiffFromLastSrvResponse: object to retain the differences, 
-	//  in linear transformation parameters (translation and scale),
-	//  from current mapview to mapview resulting from last server 
-	//	response, to be used during dynamic changes like interactive 
-	//  panning or zooming.
-	
-	this.scrDiffFromLastSrvResponse = {
-		origcenter: [0,0],
-		currcenter: [0,0],
-		origm: 1.0,
-		m: 1.0,
-		set: function(p_mval) {
-			this.origcenter = [0,0];
-			this.currcenter = [0,0];
-			this.origm = p_mval;
-			this.m = this.origm;
-		},
-		moveCenter: function(p_deltaScrX, p_deltaScrY) {
-			this.currcenter = [ this.origcenter[0]+p_deltaScrX, this.origcenter[1]+p_deltaScrY ];
-		},
-		setCenter: function(p_scrX, p_scrY) {
-			this.currcenter = [ p_scrX, p_scrY ];
-		},
-		updateM: function(p_mval) {
-			this.m = p_mval;
-		},
-		getCenterX: function() {
-			return this.currcenter[0];
-		},
-		getCenterY: function() {
-			return this.currcenter[1];
-		},
-		getMRatio: function() {
-			return this.m / this.origm;
-		},
-		scaleFromCenter: function(p_scrX, p_scrY) {
-			var ratio =  this.m / this.origm;
-			this.currcenter = [ p_scrX * (1-ratio), p_scrY * (1-ratio) ];
-		},
-		getPt: function(p_x, p_y, outpt) {
-			outpt.length = 2;
-			outpt[0] = this.getMRatio() * p_x + this.getCenterX();
-			outpt[1] = this.getMRatio() * p_y + this.getCenterY();
+	// Transform screen coords between last and current tranformations
+	this.getScrDiffPt = function(p_x, p_y, outpt) {
+		outpt.length = 2;
+		let mx1=[], mx2=[], v2=[], v3=[], tmx=[], v, lst = this.transformsQueue.getLastStored();
+		var trans = this.transformsQueue.transientTransform;
+		if (lst && trans.hasChanged()) {
+			// if current / transient trans has been changed
+			v = [p_x, p_y, 1];
+			// get terrain coords from the inverse of previous transformation
+			lst.getInvMatrix(mx1);
+			m3.vectorMultiply(v, mx1, v2);
+			// transform terrain to screen coords according to current trans
+			trans.getMatrix(mx2);
+			m3.vectorMultiply(v2, mx2, v3);
+			
+			outpt[0] = v3[0];
+			outpt[1] = v3[1];
+		} else {
+			
+			// if current / transient trans has NOT been changed
+			outpt[0] = p_x;
+			outpt[1] = p_y;
 		}
-	}
-
-	this.updateM_scrDiffFromLastSrvResponse = function() {
-		this.scrDiffFromLastSrvResponse.updateM(this.m);
-	};
-	
-	this.setScaledCenter_scrDiffFromLastSrvResponse = function(p_scrx, p_scry) {
 		
-		var dx = p_ptX - this.cx;
-		var dy = p_ptY - this.cy;
-		var scrpt = [];
-		
-		var cdims = this.getGraphicController().getCanvasDims();
-
-		var hwidth = (cdims[0] / 2.0) / this.m;
-		var hheight = (cdims[1] / 2.0) / this.m;
-		
-		var newcx = this.cx;
-		var newcy = this.cy;
-
-		newcx -= (hwidth * ( dx / this.prevhdims[0])) - dx;
-		newcy += dy -(hheight * ( dy / this.prevhdims[1]));
-		
-		this.getScreenPtFromTerrain(newcx, newcy, scrpt);	
-		
-		this.scrDiffFromLastSrvResponse.setCenter(scrpt[0], scrpt[1]);
-
 	};
 		
 	this.trace_oids = [];
@@ -426,76 +393,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return 1.0 / this.m;
 	};
 
-	this._calcTransformFromEnv = function(p_env)
-	{
-		var k, pt=[], new_env = new Envelope2D(), expfact=1.05;
-
-		new_env.setFromOther(p_env);
-		new_env.getCenter(pt);
-		this.cx = pt[0];
-		this.cy = pt[1];
-		
-		if (isNaN(this.cx)) {
-			throw new Error("_calcTransformFromEnv: this.cx is NaN");
-		}
-		if (isNaN(this.cy)) {
-			throw new Error("_calcTransformFromEnv: this.cy is NaN");
-		}
-
-		//new_env.expand(expfact);
-
-		var cdims = this.getGraphicController().getCanvasDims();
-		var whRatioCanvas = cdims[0] / cdims[1];
-		if (new_env.getWHRatio() > whRatioCanvas) {
-			k = new_env.getWidth() / cdims[0];
-		} else {
-			k = new_env.getHeight() / cdims[1];
-		}
-		this.m = 1.0 / k;
-
-		this.scale = k / (MapCtrlConst.MMPD / 1000.0);
-		
-		if (this.scale < MapCtrlConst.MINSCALE) {
-			this.scale = MapCtrlConst.MINSCALE;
-			k = this.scale * (MapCtrlConst.MMPD / 1000.0);
-			this.m = 1.0 / k;
-		}
-
-		var hwidth = k * (cdims[0] / 2.0);
-		var hheight = k * (cdims[1] / 2.0);
-		this.prevhdims = [hwidth, hheight];
-
-		this.ox = this.cx - hwidth;
-		this.oy = this.cy - hheight;
-
-		this.ny = (this.oy + cdims[1] * k) / k;
-		this.nx = -this.m * this.ox;
-		
-		//console.log(String.format("  cx:{0}, hw:{1}, ox:{2}, m:{3}, nx:{4}",this.cx,hwidth,this.ox,-this.m,this.nx));
-
-		this._terrainToScreenMx = [
-		    this.m, 0, 0,
-		    0, -this.m, 0,
-		    this.nx, this.ny, 1
-		  ];
-		this._screenToTerrainMx = m3.inverse(this._terrainToScreenMx);
-
-		this.env.setNullAround([this.cx, this.cy]);
-
-		this.getTerrainPt([0,0], pt)
-		this.env.addPoint(pt);
-		this.getTerrainPt([cdims[0],0], pt)
-		this.env.addPoint(pt);
-		this.getTerrainPt([cdims[0],cdims[1]], pt)
-		this.env.addPoint(pt);
-		this.getTerrainPt([0,cdims[1]], pt)
-		this.env.addPoint(pt);
-		
-		this.expandedEnv = new Envelope2D();
-		this.expandedEnv.setFromOther(this.env);
-		this.expandedEnv.expand(this.dataRetrievalEnvExpandFactor);
-	};
-
 /** Calculate and store map display transformation, between ground and screen units.
   * Original center of transformation should have been provided previously from map configuration, through readConfig function. 
   * Otherwise it will be undefined.
@@ -504,62 +401,106 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {number} [opt_centerx] - (optional) force new x-coord center.
   * @param {number} [opt_centery] - (optional) force new y-coord center.
 */
-	this._calcTransform = function(opt_forceprepdisp, opt_centerx, opt_centery)
-	{			
-		var _inv = this.callSequence.calling("_calcTransform", arguments);
-		
-		// Intializing and dimensioning canavas - canvas size will be used immediately ahead
-		var pt=[]; k = this.scale * (MapCtrlConst.MMPD / 1000.0);
-		this.m = 1.0 / k;
-		
+
+/** Calculate and store map display transformation, between ground and screen units.
+  * Original center of transformation should have been provided previously from map configuration, through readConfig function. 
+  * Otherwise it will be undefined.
+  * Unless mapextent enveleope is used (opt_env), map scale (this.scale) must have been defined previously, 
+  * matrix /  scaling factor will be calculated from this scale value.
+  * @this MapController
+  * @param {boolean} [opt_forceprepdisp] - (optional) force display canvas initialization, is performed automatically at first invocation.
+  * @param {number} [opt_centerx] - (optional) force new x-coord center.
+  * @param {number} [opt_centery] - (optional) force new y-coord center.
+*/
+	this._calcMapTransform = function(opt_env, opt_forceprepdisp, opt_centerx, opt_centery)
+	{
+		var pt=[], hwidth, hheight;
+		var k, _inv = this.callSequence.calling("_calcMapTransform", arguments);
+		var transientTransform = this.transformsQueue.transientTransform;
+
+		// Intializing and dimensioning canvas - canvas size will be used immediately ahead
 		this.getGraphicController().prepDisplay(opt_forceprepdisp);
-		
+		var cdims = this.getGraphicController().getCanvasDims();
+
 		if (this.spatialindexer != null) {
 			this.spatialindexer.resize();
 		}
 		
-		var cdims = this.getGraphicController().getCanvasDims();
-
-		var hwidth = k * (cdims[0] / 2.0);
-		var hheight = k * (cdims[1] / 2.0);
-
-		if (opt_centerx != null && opt_centery != null && this.prevhdims.length > 0)
-		{
-			var dx = opt_centerx - this.cx;
-			var dy = opt_centery - this.cy;
-
-			this.cx -= (hwidth * ( dx / this.prevhdims[0])) - dx;
-			this.cy += dy -(hheight * ( dy / this.prevhdims[1]));
-
+		if (opt_env) {
+			
+			var whRatioCanvas = cdims[0] / cdims[1];
+			var new_env = new Envelope2D();
+			new_env.setFromOther(opt_env);
+			new_env.getCenter(pt);
+			this.cx = pt[0];
+			this.cy = pt[1];		
+			
 			if (isNaN(this.cx)) {
-				throw new Error("_calcTransform: this.cx is NaN");
+				throw new Error("_calcMapTransform: this.cx is NaN");
 			}
 			if (isNaN(this.cy)) {
-				throw new Error("_calcTransform: this.cy is NaN");
+				throw new Error("_calcMapTransform: this.cy is NaN");
+			}
+
+			this.callSequence.addMsg("_calcMapTransform", _inv, "center coords set from env");
+
+			if (new_env.getWHRatio() > whRatioCanvas) {
+				k = new_env.getWidth() / cdims[0];
+			} else {
+				k = new_env.getHeight() / cdims[1];
+			}	
+			this.scale = k / (MapCtrlConst.MMPD / 1000.0);	
+			
+			// Keep scale inside valid threshold
+			if (this.scale < MapCtrlConst.MINSCALE) {
+				this.scale = MapCtrlConst.MINSCALE;
+				k = this.scale * (MapCtrlConst.MMPD / 1000.0);
+			}
+			hwidth = k * (cdims[0] / 2.0);
+			hheight = k * (cdims[1] / 2.0);
+
+		} else {
+			
+			k = this.scale * (MapCtrlConst.MMPD / 1000.0);
+			hwidth = k * (cdims[0] / 2.0);
+			hheight = k * (cdims[1] / 2.0);
+
+			if (opt_centerx != null && opt_centery != null && this.prevhdims.length > 0)
+			{
+				var dx = opt_centerx - this.cx;
+				var dy = opt_centery - this.cy;
+
+				this.cx -= (hwidth * ( dx / this.prevhdims[0])) - dx;
+				this.cy += dy -(hheight * ( dy / this.prevhdims[1]));
+
+				if (isNaN(this.cx)) {
+					console.warn([hwidth, this.prevhdims[0], dx]);
+					throw new Error("_calcMapTransform: this.cx is NaN");
+				}
+				if (isNaN(this.cy)) {
+					throw new Error("_calcMapTransform: this.cy is NaN");
+				}
+
+				this.callSequence.addMsg("_calcMapTransform", _inv, "center coords set");
 			}
 		}
 		
-		this.callSequence.addMsg("_calcTransform", _inv, "center coords set");
-
-		this.prevhdims = [hwidth, hheight];
-
-		// this.cx and this.cy contains coordinates of transformation center
-		// this.ox and this.oy contains coordinates of display's origin point
+		this.m = 1.0 / k;
 
 		this.ox = this.cx - hwidth;
 		this.oy = this.cy - hheight;
+		
+		this.prevhdims = [hwidth, hheight];
 
 		this.ny = (this.oy + cdims[1] * k) / k;
 		this.nx = -this.m * this.ox;
-
-		this._terrainToScreenMx = [
-		    this.m, 0, 0,
-		    0, -this.m, 0,
-		    this.nx, this.ny, 1
-		  ];
-		this._screenToTerrainMx = m3.inverse(this._terrainToScreenMx);
-
-		this.callSequence.addMsg("_calcTransform", _inv, "screen to terrain matrix is set");
+		
+		//console.log([this.ox, this.nx, this.cx]);
+		
+		transientTransform.setTranslating(-this.ox, -(this.oy + cdims[1] * k));
+		transientTransform.setScaling(this.m);
+		
+		this.callSequence.addMsg("_calcMapTransform", _inv, "screen to terrain matrix is set");
 
 		this.env.setNullAround([this.cx, this.cy]);
 
@@ -572,26 +513,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.getTerrainPt([0,cdims[1]], pt)
 		this.env.addPoint(pt);
 
-		this.callSequence.addMsg("_calcTransform", _inv, "envelope is set");
+		this.callSequence.addMsg("_calcMapTransform", _inv, "envelope is set");
 		
 		this.expandedEnv = new Envelope2D();
 		this.expandedEnv.setFromOther(this.env);
 		this.expandedEnv.expand(this.dataRetrievalEnvExpandFactor);
-
-		this.callSequence.addMsg("_calcTransform", _inv, String.format("expanded envelope is set, expand factor: {0}",this.dataRetrievalEnvExpandFactor));
-
-	};
-	
-	this.multiplyMx = function(p_is_terr2scr, p_op_mx)
-	{
-		this.useMatrix = true;
-
-		if (p_is_terr2scr) {
-			this._terrainToScreenMx = m3.multiply(this._terrainToScreenMx, p_op_mx);
-		} else {
-			this._screenToTerrainMx = m3.multiply(this._screenToTerrainMx, p_op_mx);
-		}
-
+		
+		this.callSequence.addMsg("_calcMapTransform", _inv, String.format("expanded envelope is set, expand factor: {0}",this.dataRetrievalEnvExpandFactor));
 	};
 
 /** @this MapController 
@@ -605,7 +533,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.callSequence.init("refresh");
 		this.onChangeStart("refresh");
 
-		this._calcTransform(opt_forceprepdisp, opt_centerx, opt_centery);
+		this._calcMapTransform(null, opt_forceprepdisp, opt_centerx, opt_centery);
+								
 		this._prepareRefreshDraw();
 	};
 	
@@ -615,7 +544,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {LayerFilter} [opt_filter] - (optional) if present, objects obeying filter criteria will be present, despite being or not inside envelope.
 */	
 	this.refreshFromEnv = function(p_env, opt_filter) {
-		this._calcTransformFromEnv(p_env);
+		this._calcMapTransform(p_env);
 		this._prepareRefreshDraw(opt_filter);
 	};
 
@@ -631,7 +560,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	{
 		var env = new Envelope2D();
 		env.setMinsMaxs(p_minx, p_miny, p_maxx, p_maxy);
-		this._calcTransformFromEnv(env);
+		this._calcMapTransform(env);
 		this._prepareRefreshDraw(opt_filter);
 	};
 	
@@ -655,7 +584,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 */
 	this.redraw = function(opt_forceprepdisp, opt_centerx, opt_centery, opt_nottimed) {
 		this.onChangeStart("redraw");
-		this._calcTransform(opt_forceprepdisp, opt_centerx, opt_centery);
+		//console.log([opt_forceprepdisp, opt_centerx, opt_centery]);
+		this._calcMapTransform(null, opt_forceprepdisp, opt_centerx, opt_centery);
 		this._localDraw(opt_nottimed);
 	};
 
@@ -673,7 +603,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		let deltascry =  p_y - p_start_screen[1];
 
 		if (Math.abs(deltascrx) > 1 || Math.abs(deltascry) > 1) {
-			this.scrDiffFromLastSrvResponse.moveCenter(deltascrx, deltascry);
+			//this.scrDiffFromLastSrvResponse.moveCenter(deltascrx, deltascry);
 			this.moveCenter(deltax, deltay);
 			this.redraw(true);
 		}
@@ -716,8 +646,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		this.getTerrainPt([p_pagerefx, p_pagerefy], terrain_pt);		
 		
-		this.updateM_scrDiffFromLastSrvResponse();
-		this.scrDiffFromLastSrvResponse.scaleFromCenter(p_pagerefx, p_pagerefy);
+		//this.updateM_scrDiffFromLastSrvResponse();
+		//this.scrDiffFromLastSrvResponse.scaleFromCenter(p_pagerefx, p_pagerefy);
 		this._changeScale(p_scale, true, terrain_pt[0], terrain_pt[1]);
 		
 	}
@@ -815,38 +745,28 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return ret;
 	};
 
-	this.getScreenPtFromTerrain = function(p_terrpt_x, p_terrpt_y, out_pt, opt_forcemx)
+	this.getScreenPtFromTerrain = function(p_terrpt_x, p_terrpt_y, out_pt)
 	{
 		if (p_terrpt_x === null || typeof p_terrpt_x != 'number') {
-			console.trace();
 			throw new Error(this.msg("MISSPARM1X")+p_terrpt_x);
 		}
 		if (p_terrpt_y === null || typeof p_terrpt_y != 'number') {
 			throw new Error(this.msg("MISSPARM1Y")+p_terrpt_y);
 		}
-		var v, ret, retmx=[], vy, vx;
+		
+		var v1=[], v2=[], mx1=[];
+		var trans = this.transformsQueue.transientTransform;
 
 		out_pt.length = 2;
-		vx = parseFloat(p_terrpt_x);
-		vy = parseFloat(p_terrpt_y);
-
-		if (this.useMatrix || opt_forcemx) {
-			v = [vx, vy, 1];
-			//console.log(String.format("  ---- A v:{0}", v));
-			m3.vectorMultiply(v, this._terrainToScreenMx, retmx);
-			out_pt[0] = retmx[0];
-			out_pt[1] = retmx[1];
-		} else {
-			/*
-			console.log(String.format("  ----- B m:{0} vx:{1} nx:{2:.2f}", this.m, vx, this.nx));
-			console.log(String.format("  -----         vy:{0} ny:{1:.2f}", vy, this.ny));
-			* */
-			out_pt[0] = Math.round(this.m * vx + this.nx);
-			out_pt[1] = Math.round(-this.m * vy + this.ny);
-		}
+		v1 = [parseFloat(p_terrpt_x), parseFloat(p_terrpt_y), 1];
+		// get screen coords from current transformation
+		trans.getMatrix(mx1);
+		m3.vectorMultiply(v1, mx1, v2);
+		
+		out_pt[0] = v2[0];
+		out_pt[1] = v2[1];
 	};
-
-	this.getScreenPtFromSrvResponse = function(p_data_x, p_data_y, out_pt, opt_forcemx, opt_dolog)
+	this.getScreenPtFromSrvResponse = function(p_data_x, p_data_y, out_pt, opt_dolog)
 	{
 		if (p_data_x === null || typeof p_data_x != 'number') {
 			throw new Error(this.msg("MISSPARM1X")+p_data_x);
@@ -863,35 +783,33 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		terr_x = this.lastSrvResponseTransform.cenx + this.lastSrvResponseTransform.pixsz * vx;
 		terr_y = this.lastSrvResponseTransform.ceny + this.lastSrvResponseTransform.pixsz * vy;
 		
-		this.getScreenPtFromTerrain(terr_x, terr_y, out_pt, opt_forcemx)
+		this.getScreenPtFromTerrain(terr_x, terr_y, out_pt)
 		
 		if (opt_dolog) {
 			console.log(String.format("  x:{0} y:{1}  v:{2}", terr_x, terr_y, JSON.stringify(out_pt)));
 		}
 
 	};
-		
-	this.getTerrainPt = function(p_scrpt, out_pt, opt_forcemx)
+
+	this.getTerrainPt = function(p_scrpt, out_pt)
 	{
 		if (p_scrpt === null || typeof p_scrpt != 'object' || p_scrpt.length != 2) {
 			throw new Error(this.msg("MISSPARM2")+p_scrpt);
 		}
-		var v, ret, retmx=[], vy, vx = parseFloat(p_scrpt[0]);
+		
+		var v1=[], v2=[], mx1=[];
+		var trans = this.transformsQueue.transientTransform;
 
 		out_pt.length = 2;
-		vy = parseFloat(p_scrpt[1]);
-
-		if (this.useMatrix || opt_forcemx) {
-			v = [vx, vy, 1];
-			m3.vectorMultiply(v, this._screenToTerrainMx, retmx);
-			out_pt[0] = retmx[0];
-			out_pt[1] = retmx[1];
-		} else {
-			out_pt[0] = (vx - this.nx) / this.m;
-			out_pt[1] = (vy - this.ny) / -this.m;
-		}
+		v1 = [parseFloat(p_scrpt[0]), parseFloat(p_scrpt[1]), 1];
+		// get terrain coords from the inverse of current transformation
+		trans.getInvMatrix(mx1);
+		m3.vectorMultiply(v1, mx1, v2);
+		
+		out_pt[0] = v2[0];
+		out_pt[1] = v2[1];
 	};
-
+		
 	this.readConfig = function(p_initconfig) {
 
 		var scalev, tobj, tobj1, baseurl, lblscllims=[];
@@ -1580,7 +1498,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	// returns true if multipart
 	this._storeFeat = function(p_buildarray, p_content_obj, p_layername,
-			oidkey, p_cenx, p_ceny, p_pixsz, out_readfc, opt_forcemx)
+			oidkey, p_cenx, p_ceny, p_pixsz, out_readfc)
 	{
 		var vi, pi, storedfeatdata, readfc = [0];
 		var hasparts = false;
@@ -1689,7 +1607,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}			
 			
 			// as coordenadas das features ficam armazenadas como screen coords
-			this.toScreenPoints(p_content_obj.crds, storedfeatdata.path_levels, storedfeatdata.points, opt_forcemx);
+			this.toScreenPoints(p_content_obj.crds, storedfeatdata.path_levels, storedfeatdata.points);
 			
 			ondr_ftidx = 0;
 
@@ -1813,7 +1731,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		//var fc = data.fcnt;
 		var ci, readfc = [0], feat, ctrlcnt = 10000;
 		//var screencoords = [];
-		var opt_forcemx = false;
 		var drawn = false;
 		var inerror = false;
 		var dodebug = false; // DEBUG
@@ -1839,7 +1756,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		this.lastSrvResponseTransform.setFromData(data);
 		
-		this.scrDiffFromLastSrvResponse.set(this.m);
+		//this.scrDiffFromLastSrvResponse.set(this.m);
 		
 		var content_isarray = Array.isArray(content);
 
@@ -2137,7 +2054,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	this.drawFeatureInCanvas = function(p_feature,
 			p_dostroke, p_dofill, p_markerf, is_inscreenspace, p_dolog, 
-			opt_displaylayer, opt_forcemx)
+			opt_displaylayer)
 	{
 		let gtype = "NONE";
 		switch (p_feature.path_levels) 
@@ -2148,8 +2065,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					console.log(".. drawFeatureInCanvas, before drawMultiplePathCollection");
 				}
 				gtype = this.getGraphicController().drawMultiplePathCollection(p_feature.points, p_dostroke, p_dofill, 
-					is_inscreenspace, opt_displaylayer, p_dolog, opt_forcemx);
-
+					is_inscreenspace, opt_displaylayer, p_dolog);
 				break;
 				
 			case 2:
@@ -2157,15 +2073,16 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					console.log(".. drawFeatureInCanvas, POLY before drawMultiplePath");
 				}
 				gtype = this.getGraphicController().drawMultiplePath(p_feature.points, p_dostroke, p_dofill, 
-					is_inscreenspace, opt_displaylayer, p_dolog,  opt_forcemx);			
+					is_inscreenspace, opt_displaylayer, p_dolog);			
 				break;
 				
 			case 1:
 				if (p_dolog) {
 					console.log(".. drawFeatureInCanvas, LINE before drawSimplePath");
 				}				
+
 				gtype = this.getGraphicController().drawSimplePath(p_feature.points, p_dostroke, p_dofill, 
-					p_markerf, is_inscreenspace, opt_displaylayer, p_dolog, opt_forcemx, this, p_feature.attrs);			
+					p_markerf, is_inscreenspace, opt_displaylayer, p_dolog, p_feature.attrs);			
 					
 				break;
 				
@@ -2186,7 +2103,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var pac, paci, attrval, gtype;
 		//var hasperattribstyle = false;
 		var stylechanged = false;
-		var do_forcemx = false;
 		let markerf = null;
 		
 		var displaylayer;
@@ -2299,12 +2215,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			*/
 			
 			//console.log(p_layername + " " + p_featdata.path_levels);
+			//console.log(p_layername + " " + JSON.stringify(p_featdata));
 
 			
 			gtype = this.drawFeatureInCanvas(p_featdata, out_styleflags.stroke, 
 				out_styleflags.fill, markerf, 
 				is_inscreenspace, opt_dodebug, 
-				displaylayer, do_forcemx);
+				displaylayer);
 				
 			//console.log(gtype);
 			if (this.currentstyle!=null) {
@@ -2357,7 +2274,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 
 	this.drawSimplePath = function(p_points,   
-					is_inscreenspace, p_styleobj, opt_displaylayer, dolog, do_forcemx) {
+					is_inscreenspace, p_styleobj, opt_displaylayer, dolog) {
 
 		let styleflags = {};
 	
@@ -2365,8 +2282,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.applyStyle(p_styleobj, styleflags, opt_displaylayer);
 
 		let markerfunc = null;
+
 		this.getGraphicController().drawSimplePath(p_points, styleflags.stroke, styleflags.fill,  
-					markerfunc, is_inscreenspace, opt_displaylayer, dolog, do_forcemx);
+					markerfunc, is_inscreenspace, opt_displaylayer, dolog);
 
 		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
@@ -2719,7 +2637,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		'use strict';
 
 		var ldata, maxallowed_duration, t0, t1;
-
+		
 		var ctrlcnt = 10000;
 		var dodebug = false; // DEBUG
 		var out_return = {};
@@ -3051,10 +2969,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	// Function drawMultiplePathCollection -- draw collection of multiple paths in canvas
 	// Input parameters:
-	// 	 p_sclval: current scale value
 	// 	 opt_objforlatevectordrawing: object containing attributes to control vector drawing ocurring after the rasters, here retrieved, are fully drawn
 	
-	this._retrieveRastersFromServer = function(p_sclval, p_objforlatevectordrawing, b_vectorsexpected)
+	this._retrieveRastersFromServer = function(p_objforlatevectordrawing, b_vectorsexpected)
 	{
 		// layers raster
 		var lconfig = this.lconfig;
@@ -3068,7 +2985,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.callSequence.addMsg("_retrieveRastersFromServer", _inv, "raster specs DO exist");
 
 			this.rcvctrler.cycleRasterLayerSpecs(			
-				function (name, rasterLayerSpecs, the_mapcontroller, the_rcvctrler, sclval, clrimflag_ref) 
+				function (name, rasterLayerSpecs, the_mapcontroller, the_rcvctrler, clrimflag_ref) 
 				{				
 					if (!clrimflag_ref[0]) {
 						clrimflag_ref[0] = true;
@@ -3081,7 +2998,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				},
 				this,
 				this.rcvctrler,
-				p_sclval,
 				clrimgflag_obj
 			);
 
@@ -3219,8 +3135,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		// Verify that small scale limit was runover and activate small scale themes accordingly
 		
-		// WORKING  ----------------------
-		
 		this.callSequence.addMsg("_prepareRefreshDraw", _inv, String.format("executed {0} 'on before refresh' functions",obr_i));
 		
 		this.drawnrasters.length = 0;
@@ -3288,7 +3202,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 								{
 									respdata = JSON.parse(this.responseText);
 									stats_exist = p_self.rcvctrler.setLayersStats(respdata);
-									p_self._checkRefreshDraw(MapCtrlConst.REFRESH_VECTORS, sclval, opt_filterdata);
+									p_self._checkRefreshDraw(MapCtrlConst.REFRESH_VECTORS, opt_filterdata);
 								} else {
 									if (this.responseText.trim().length == 0) {
 										return;
@@ -3381,7 +3295,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 												{
 													p_mapctrller.rcvctrler.setRasterLayerSpecs(rname, lvldata, respdata);
 												}
-												p_mapctrller._checkRefreshDraw(MapCtrlConst.REFRESH_RASTERS, sclval, opt_filterdata);
+												p_mapctrller._checkRefreshDraw(MapCtrlConst.REFRESH_RASTERS, opt_filterdata);
 											}
 										}
 									} catch(e) {
@@ -3416,10 +3330,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 /** @this MapController 
   * Main object to control map display
-  * @param {string} p_sclval - The ID of HTML container object to recieve the map display.
   * @returns {string} - String containing class name
 */
-	this._checkRefreshDraw = function(p_mode, p_sclval, opt_filterdata)
+	this._checkRefreshDraw = function(p_mode, opt_filterdata)
 	{
 		this.clearTemporary();
 		
@@ -3466,7 +3379,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		//console.log("this.refreshcapability & this.refreshmode == this.refreshcapability, " + (this.refreshcapability & this.refreshmode) +" == "+ this.refreshcapability + ", mode:" + this.refreshmode);
 		if (this.refreshcapability == this.refreshmode) {
-			this._executeRefreshDraw(p_sclval, opt_filterdata)
+			this._executeRefreshDraw(opt_filterdata)
 		}
 		else {
 			this.clearTransient();
@@ -3490,6 +3403,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this._executeVectorRefreshDraw = function(p_inscreenspace, opt_filterdata)
 	{
 		var _inv = this.callSequence.calling("_executeVectorRefreshDraw", arguments);
+		this.transformsQueue.checkToStore();
 		
 		this.waitingForFirstChunk = true;		
 		if (this.activeserver && this.rcvctrler.getLayerCount() > 0)
@@ -3530,13 +3444,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 /** @this MapController 
   * Main object to control map display
-  * @param {string} p_sclval - The ID of HTML container object to recieve the map display.
   * @returns {string} - String containing class name
 */
-	this._executeRefreshDraw = function(p_sclval, opt_filterdata)
+	this._executeRefreshDraw = function(opt_filterdata)
 	{
 
 		var _inv = this.callSequence.calling("_executeRefreshDraw", arguments);
+		var scale = this.getScale();
 
 		if (this.refreshcapability < 1) {
 			throw new Error("no refresh capabilities");
@@ -3555,7 +3469,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var refresh_rasters = ((this.refreshcapability & MapCtrlConst.REFRESH_RASTERS) == MapCtrlConst.REFRESH_RASTERS);
 		
 		var vectors_exclusive = false;
-		if (!this.muted_vectors && p_sclval >= this.vectorexclusive_scales[0] && p_sclval <= this.vectorexclusive_scales[1]) {
+		if (!this.muted_vectors && scale >= this.vectorexclusive_scales[0] && scale <= this.vectorexclusive_scales[1]) {
 			vectors_exclusive = true;
 		}
 		
@@ -3569,7 +3483,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (refresh_rasters && !vectors_exclusive) 
 		{
 			this._retrieveRastersFromServer(
-				p_sclval, 
 				{
 					"refresh_vectors": refresh_vectors,
 					"filteringdata": opt_filterdata
@@ -3822,7 +3735,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this._cancelCurrentChange = false;
 			throw(e);
 		}
-		
+
 		this._cancelCurrentChange = false;
 	};
 
@@ -3975,7 +3888,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.labelengine = new MapLabelEngine(this);
 	this.spatialindexer = new SpatialIndexer(this, MapCtrlConst.SPINDEX_STEP);
 
-	this.findNearestObject = function(p_scrx, p_scry, p_layername, opt_forcemx)
+	this.findNearestObject = function(p_scrx, p_scry, p_layername)
 	{
 		var ret = null;
 		var found = false;
@@ -3985,7 +3898,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		var pix_radius = Math.ceil(this.m * tol);
 
 		if (this.spatialindexer) {
-			ret = this.spatialindexer.findNearestObject([p_scrx, p_scry], pix_radius, p_layername, null, true);
+			ret = this.spatialindexer.findNearestObject([p_scrx, p_scry], pix_radius, p_layername);
 			if (ret) {
 				found = true;
 			}

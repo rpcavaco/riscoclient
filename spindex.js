@@ -438,7 +438,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		this.added_points_count++;
 	};
 
-	this.findNearestObject = function(p_scr_pt, p_pix_radius, p_layername, opt_forcemx, opt_verbose) 
+	this.findNearestObject = function(p_scr_pt, p_pix_radius, p_layername) 
 	{
 		var col = Math.floor(p_scr_pt[0] / this.step);
 		var row = Math.floor(p_scr_pt[1] / this.step);

@@ -301,7 +301,7 @@ function mouseWheelController(p_controls_mgr) {
 				p_self.clearReference();
 			}, p_self.waitPeriodMsec);
 		})(this);
-					
+
 		return false;
 	}	
 }
@@ -410,6 +410,8 @@ function touchController(p_controls_mgr) {
 		
 		let xcoord, ycoord, dx=null, dy=null, d, t;
 		let coords=[], minx=999999, miny=999999;
+		
+		console.log(this.ongoingTouches.length);
 		
 		if (this.ongoingTouches.length != 2) {
 			return;
@@ -623,7 +625,7 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 
 	this.mousemove = function(e, target, x, y) 
 	{
-		var dx, dy, ang,  angvals = [], retpt=[], func = null, draw_dolog = false; forcemx = false, inscreenspace = false;
+		var dx, dy, ang,  angvals = [], retpt=[], func = null, draw_dolog = false; inscreenspace = false;
 		
 		var styleobj = { 
 				"stroke": { "linewidth": 3 }
@@ -673,11 +675,11 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 					//true, true, false, styleobj, 'transient');
 
 				gc.drawCircle(this.start_map[0], this.start_map[1], this.measvalterrain, true, true, 
-					true, 'transient', do_forcemx);
+					true, 'transient');
 
 				gc.drawSimplePath([this.start_map[0], this.start_map[1], current_map[0], current_map[1]], true, true,  
-					null, true, 'transient', draw_dolog, forcemx) 
-					
+					null, true, 'transient', draw_dolog) 
+
 				geom.twoPointAngle(this.start_screen, [x,y], angvals);
 				
 				ang = angvals[0];

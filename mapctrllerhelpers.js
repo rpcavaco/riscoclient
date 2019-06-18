@@ -572,11 +572,11 @@ function RetrievalController() {
 	this.existAnyRasterLayerSpecs = function() {
 		return !isEmpty(this._rasterlayersspecs);
 	};
-	this.cycleRasterLayerSpecs = function(p_function, p_mapctrller, the_rcvctrler, p_sclval, p_clrimgflagref)
+	this.cycleRasterLayerSpecs = function(p_function, p_mapctrller, the_rcvctrler, p_clrimgflagref)
 	{
 		for (var name in this._rasterlayersspecs) {
 			if (this._rasterlayersspecs.hasOwnProperty(name)) {
-				p_function(name, this._rasterlayersspecs[name], p_mapctrller, the_rcvctrler, p_sclval, p_clrimgflagref);
+				p_function(name, this._rasterlayersspecs[name], p_mapctrller, the_rcvctrler, p_clrimgflagref);
 			}
 		}
 	};
@@ -1218,6 +1218,74 @@ function GraphicControllerMgr(p_mapctrler, p_elemid) {
 	};
 	
 	this.create(p_mapctrler, p_elemid, "main");
+}
+
+function MapAffineTransformation() {
+	
+	this.scaling = [];
+	m3.identity(this.scaling);
+	this.translating = [];
+	m3.identity(this.translating);
+	this.rotating = [];
+	m3.identity(this.rotating);
+	this._scaleval = null;
+	this._rotval = null;
+	this._transval = [];
+	this.changed_flag = false;
+	
+	this.getMatrix = function(out_m) {
+		m3.multiply(this.scaling, this.rotating, out_m);
+		m3.multiply(out_m, this.translating, out_m);
+		//m3.logMx(console, out_m);
+	};	
+	this.logMx = function() {
+		let outmx = [];
+		this.getMatrix(outmx);
+		m3.logMx(console, outmx);
+	};
+	this.getInvMatrix = function(out_m) {
+		let tmp = [];
+		this.getMatrix(tmp);
+		m3.inverse(tmp, out_m);
+	};	
+	this.setScaling = function(p_scalingf) {
+		if (this._scaleval !== null  && Math.abs(this._scaleval - p_scalingf) < 0.000001) {
+			return false;
+		}
+		m3.scaling(p_scalingf, -p_scalingf, this.scaling);
+		this._scaleval = p_scalingf;
+		this.changed_flag = true;
+		return true;
+	};
+	this.setTranslating = function(p_tx, p_ty) {
+		if (this._transval.length > 0 && 
+				(Math.abs(this._transval[0] - p_tx) < 0.000001 && Math.abs(this._transval[1] - p_ty) < 0.000001) 
+			) {
+			return false;			
+		}
+		m3.translation(p_tx, p_ty, this.translating);
+		this._transval = [p_tx, p_ty];
+		this.changed_flag = true;
+		return true;
+	};
+	this.setRotating = function(p_deg) {
+		if (this._rotval !== null  && Math.abs(this._rotval - p_deg) < 0.00001) {
+			return false;
+		}
+		m3.rotation(geom.rad2Deg(p_deg), this.rotating);
+		this._rotval = p_deg;
+		this.changed_flag = true;
+		return true;
+	};
+	this.hasChanged = function() {
+		return this.changed_flag;
+	};
+	this.resetChangedFlag = function() {
+		this.changed_flag = false;
+	};
+	this.getScaleVal = function() {
+		return this._scaleval;
+	}
 }
 	
 

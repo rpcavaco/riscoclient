@@ -64,27 +64,29 @@ var m3 = {
 	    out_result[8] = b[6] * a[2] + b[7] * a[5] + b[8] * a[8];
 	},
 	
-	inverse: function(m) {
+	inverse: function(m, out_result) {
+		
+	    if (out_result.length != 9) {
+	    	out_result.length = 9;
+	    }
+
 		var A = m[4] * m[8] - m[5] * m[7]; 
 		var B = m[5] * m[6] - m[3] * m[8]; 
 		var C = m[3] * m[7] - m[4] * m[6]; 
 		var oneOvrDet, determ = m[0] * A + m[1] * B + m[2] * C; 
 		
-		if (determ === 0) {
-			return null;
-		} else {
+		if (determ !== 0) {
 			oneOvrDet = 1.0 / determ; 
-			return [
-			   A * oneOvrDet, 
-			   (m[2] * m[7] - m[1] * m[8]) * oneOvrDet,
-			   (m[1] * m[5] - m[2] * m[4]) * oneOvrDet,
-			   B * oneOvrDet, 
-			   (m[0] * m[8] - m[2] * m[6]) * oneOvrDet,
-			   (m[2] * m[3] - m[0] * m[5]) * oneOvrDet,
-			   C * oneOvrDet, 
-			   (m[1] * m[6] - m[0] * m[7]) * oneOvrDet,
-			   (m[0] * m[4] - m[1] * m[3]) * oneOvrDet
-			]
+
+			out_result[0] = A * oneOvrDet;
+			out_result[1] = (m[2] * m[7] - m[1] * m[8]) * oneOvrDet;
+			out_result[2] = (m[1] * m[5] - m[2] * m[4]) * oneOvrDet;
+			out_result[3] = B * oneOvrDet;
+			out_result[4] = (m[0] * m[8] - m[2] * m[6]) * oneOvrDet;
+			out_result[5] = (m[2] * m[3] - m[0] * m[5]) * oneOvrDet;
+			out_result[6] = C * oneOvrDet;
+			out_result[7] = (m[1] * m[6] - m[0] * m[7]) * oneOvrDet;
+			out_result[8] = (m[0] * m[4] - m[1] * m[3]) * oneOvrDet;
 		}
 	},
   
@@ -229,7 +231,7 @@ var m3 = {
    */
   rotate: function (m, angleInRadians, out_result) {
 		var intermx = []; 
-		this.rotation(width, height, intermx)
+		this.rotation(angleInRadians, intermx)
 		this.multiply(m, intermx, out_result);
   },
 

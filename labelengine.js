@@ -124,7 +124,8 @@ function MapLabelEngine(p_mapcontroller) {
 						k = 3;
 					} else if (featLen >= 5 * txtLen) {
 						k = 2;
-					} else if (featLen >= txtLen) {
+					// } else if (featLen >= txtLen) {
+					} else {
 						k = 1;
 					}
 					
@@ -195,7 +196,7 @@ function MapLabelEngine(p_mapcontroller) {
 							}
 
 							grCtrller.drawSimplePath(coords, false, true, null, 
-									p_inscreenspace, opt_displaylayer, false, false, null, null); 
+									p_inscreenspace, opt_displaylayer, false); 
 
 							geom.applyPolarShiftTo(startpt, 
 									angle_ret[0], offsetA, anchpt);
@@ -236,7 +237,7 @@ function MapLabelEngine(p_mapcontroller) {
 							}
 
 							grCtrller.drawSimplePath(coords, false, true, 
-									null, p_inscreenspace, opt_displaylayer, false, false, null, null); 
+									null, p_inscreenspace, opt_displaylayer, false); 
 
 							geom.applyPolarShiftTo(startpt, 
 									angle_ret[0], -offsetA, anchpt);
