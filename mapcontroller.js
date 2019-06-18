@@ -144,13 +144,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	
 	this.scale = 1;
-	this.m = 1;
 	this.cx = null;
 	this.cy = null;
-	this.ox = 0;
-	this.oy = 0;
-	this.nx = 0;
-	this.ny = 0;
 	this.lang = "pt";
 	this.i18n_text = null;
 	this.features = {};
@@ -349,8 +344,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return this.scale;
 	};
 	this.getScreenScalingFactor = function() {
-		// TODO: ADAPTAR À TRANSFORMAÇÃO POR MATRIZ
-		return this.m;
+		var ttrans = this.transformsQueue.transientTransform;		
+		return ttrans.getScaleVal();
 	};
 	this.getMaxZIndex = function() 
 	{
@@ -390,7 +385,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	
 	this.calcPixSize = function() {
-		return 1.0 / this.m;
+		var ttrans = this.transformsQueue.transientTransform;		
+		return 1.0 / ttrans.getScaleVal();
 	};
 
 /** Calculate and store map display transformation, between ground and screen units.
@@ -414,7 +410,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 */
 	this._calcMapTransform = function(opt_env, opt_forceprepdisp, opt_centerx, opt_centery)
 	{
-		var pt=[], hwidth, hheight;
+		var pt=[], hwidth, hheight, ox, oy;
 		var k, _inv = this.callSequence.calling("_calcMapTransform", arguments);
 		var transientTransform = this.transformsQueue.transientTransform;
 
@@ -485,20 +481,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			}
 		}
 		
-		this.m = 1.0 / k;
-
-		this.ox = this.cx - hwidth;
-		this.oy = this.cy - hheight;
+		ox = this.cx - hwidth;
+		oy = this.cy - hheight;
 		
 		this.prevhdims = [hwidth, hheight];
 
-		this.ny = (this.oy + cdims[1] * k) / k;
-		this.nx = -this.m * this.ox;
-		
-		//console.log([this.ox, this.nx, this.cx]);
-		
-		transientTransform.setTranslating(-this.ox, -(this.oy + cdims[1] * k));
-		transientTransform.setScaling(this.m);
+		transientTransform.setTranslating(-ox, -(oy + cdims[1] * k));
+		transientTransform.setScaling(1.0 / k);
 		
 		this.callSequence.addMsg("_calcMapTransform", _inv, "screen to terrain matrix is set");
 
@@ -1211,9 +1200,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		if (isNaN(this.expandedEnv.getHeight())) {
 			throw new Error("getStatsURL - env.getHeight() is NaN");
-		}
-		if (isNaN(this.m)) {
-			throw new Error("getStatsURL - this.m is NaN");
 		}
 
 		var vizlyrs = [];
@@ -3895,7 +3881,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		var tol = this.mapctrlsmgr.getTolerance(this.getScale());
 		
-		var pix_radius = Math.ceil(this.m * tol);
+		var ttrans = this.transformsQueue.transientTransform;		
+		var pix_radius = Math.ceil(ttrans.getScaleVal() * tol);
 
 		if (this.spatialindexer) {
 			ret = this.spatialindexer.findNearestObject([p_scrx, p_scry], pix_radius, p_layername);
