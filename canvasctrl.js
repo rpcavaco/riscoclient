@@ -5,7 +5,7 @@ function canvElName(p_layername) {
 	return "_dl" + p_layername;
 }
 
-function ctxGenericApplyStyle(p_canvasctx, p_styleobj, out_styleflags) {
+function ctxGenericApplyStyle(p_canvasctx, p_styleobj, p_patterns, out_styleflags) {
 	
 	let foundattrs = [];
 	for (let k_attr in p_styleobj) {
@@ -20,8 +20,16 @@ function ctxGenericApplyStyle(p_canvasctx, p_styleobj, out_styleflags) {
 				p_canvasctx.strokeStyle = p_styleobj[k_attr];
 				out_styleflags.stroke = true;
 				break;
-			case "fillcolor":
-				p_canvasctx.fillStyle = p_styleobj[k_attr];
+			case "fill":
+				if (p_patterns[p_styleobj[k_attr]] !== undefined) {
+					if (typeof p_patterns[p_styleobj[k_attr]] == 'string' && (p_patterns[p_styleobj[k_attr]].indexOf('#') == 0)) {
+						p_canvasctx.fillStyle = p_patterns[p_styleobj[k_attr]];
+					} else {
+						p_canvasctx.fillStyle = p_canvasctx.createPattern(p_patterns[p_styleobj[k_attr]], "repeat");
+					}
+				} else {
+					p_canvasctx.fillStyle = p_styleobj[k_attr];
+				}
 				out_styleflags.fill = true;
 				break;
 			case "linewidth":
@@ -620,23 +628,23 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		ctx.restore();
 	};	
 	
-	this.applyStyle = function(p_styleobj, out_styleflags, opt_displaylayer)
+	this.applyStyle = function(p_styleobj, p_patterns, out_styleflags, p_layername, opt_displaylayer)
 	{
 		out_styleflags.stroke = false;
 		out_styleflags.fill = false;
 		var foundattrs = [];
 
 		if (typeof p_styleobj == 'undefined') {
-			throw new Error("applyStyle "+this.msg("NOSTYOBJ"));
+			throw new Error("applyStyle layer '"+p_layername+"' "+this.msg("NOSTYOBJ"));
 		}
 		
 		let ctx = this.getCtx(opt_displaylayer);
 		if (ctx == null) {
-			throw new Error("applyStyle: no active graphic controller ccontext");
+			throw new Error("applyStyle layer '"+p_layername+"': no active graphic controller ccontext");
 		}
 
 		// apply generic canvas symbology attributes
-		ctxGenericApplyStyle(ctx, p_styleobj, out_styleflags);
+		ctxGenericApplyStyle(ctx, p_styleobj, p_patterns, out_styleflags);
 		
 		for (var attr in p_styleobj)
 		{
@@ -661,7 +669,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 		}
 		if (out_styleflags.stroke === undefined ||  out_styleflags.fill === undefined || (!out_styleflags.stroke && !out_styleflags.fill)) {
-			throw new Error("applyStyle "+this.msg("NOTHDRAW"));
+			throw new Error("applyStyle layer '"+p_layername+"' "+this.msg("NOTHDRAW"));
 		}
 	};
 		
@@ -710,7 +718,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 			if (is_inscreenspace) {
 				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
-				this._mapcontroller.getScrDiffPt(points[cpi], points[cpi+1], pt);
+				this._mapcontroller.getScrDiffPt(p_points[0], p_points[1], pt);
 			} else {
 				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt);
 			}

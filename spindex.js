@@ -1,5 +1,4 @@
- //vn = 0;
- 
+
 function SpatialIndexer(p_mapcontroller, p_step) {
 	
 	this.getClassStr = function() {
@@ -71,17 +70,11 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		if (this.matrix[p_layername][idx].indexOf(p_objid) < 0) {			
 			this.matrix[p_layername][idx].push(p_objid);
 		}
-		
-		/*
-		if (p_objid == 6536) {
-			//vn++;
-			console.log("add2mat:"+JSON.stringify([p_row, p_col,  p_layername, p_objid]));
-		}
-		* */
 	};
 
 	// TODO
-	this.addPoly = function(p_scrcoords, p_path_levels, p_layername, p_objid) {		
+	this.addPoly = function(p_scrcoords, p_path_levels, p_layername, p_objid) 
+	{		
 		var env = [null, null, null, null];
 		
 		function cycleCoords(pp_coords, p_spatindex, p_envidxs, pp_objid) 
@@ -203,11 +196,6 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		}
 
 		var has_points = false;
-		/*
-		if (p_objid == 6536) {
-			console.log([p_objid,p_path_levels]);
-		}*/
-		
 		switch (p_path_levels)
 		{			
 			case 1:
@@ -247,11 +235,6 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		
 		var layercell = this.matrix[p_layername];
 
-		/*
-		if (p_objid == 6536) {
-			console.log(env);
-		}*/
-		
 		if (layercell!=null && has_points) 
 		{
 			for (var row=env[1]; row<=env[3]; row++) 
@@ -543,12 +526,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			}
 		}
 		
-		/*
-		if (checkobj.found_oid == null) {
-			console.log([minrow,maxrow,mincol,maxcol]);
-			console.log(JSON.stringify(checkobj, 2));
-		} */
-		
+
 		return checkobj.found_oid;
 	};
 	

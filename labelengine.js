@@ -310,7 +310,7 @@ function MapLabelEngine(p_mapcontroller) {
 			}
 			if (local_lconfig[lname].label !== undefined) {
 				this.lnames.push(lname);
-				this.lconfig[lname] = clone(local_lconfig[lname].label);
+				this.lconfig[lname] = local_lconfig[lname].label;
 			}
 		}
 		
@@ -346,7 +346,7 @@ function MapLabelEngine(p_mapcontroller) {
 		
 		if (opt_style)
 		{
-			selstyle = opt_style;
+			selstyle = clone(opt_style);
 		} else { 
 			if (this.lconfig[layername].defaultdraw !== undefined) {
 				ret = this.lconfig[layername].defaultdraw;
@@ -356,94 +356,93 @@ function MapLabelEngine(p_mapcontroller) {
 				return ret;
 			}
 			
-			/*
-			console.log(layername);
-			console.log(this.lconfig[layername]);
-			* */
-			
 			if (this.lconfig[layername].style !== undefined) {
 				
 				selstyle = clone(this.lconfig[layername].style);
 
-				// scale dependent rendering
-				if (this.lconfig[layername].style.scaledependent !== undefined) 
-				{
-					for (var cls_scl_val in this.lconfig[layername].style.scaledependent) 
-					{
-						p_scale_val = this.mapcontroller.getScale();
-						if (this.lconfig[layername].style.scaledependent.hasOwnProperty(cls_scl_val) && 
-							(p_scale_val >= cls_scl_val && (dep_rendering_scaleval == null || cls_scl_val > dep_rendering_scaleval))
-							) {
-								dep_rendering_scaleval = cls_scl_val;
-						}
-					}
-					
-					if (dep_rendering_scaleval != null)
-					{
-						if (this.lconfig[layername].style.scaledependent[dep_rendering_scaleval] !== undefined) {
-							tmpstyle = this.lconfig[layername].style.scaledependent[dep_rendering_scaleval];
-							for (var skey in tmpstyle) {
-								if (!tmpstyle.hasOwnProperty(skey)) {
-									continue;
-								}
-								selstyle[skey] = tmpstyle[skey];
-							}
-						}
-					}
-				}
-				
-				if (this.lconfig[layername].style.backgroundependent !== undefined) {
-					var lwcr, lr = [];
-					this.mapcontroller.rcvctrler.getRasterNames(lr, true);
-					for (var bkraster in this.lconfig[layername].style.backgroundependent) {
-						if (this.lconfig[layername].style.backgroundependent.hasOwnProperty(bkraster)) {
-							lwcr = bkraster.toLowerCase();
-							if (lr.indexOf(lwcr) >= 0) {
-								if (this.lconfig[layername].style.backgroundependent[bkraster] !== undefined) {
-									this_has_bgdependent = true;
-									tmpstyle = this.lconfig[layername].style.backgroundependent[bkraster];
-									for (var skey in tmpstyle) {
-										if (!tmpstyle.hasOwnProperty(skey)) {
-											continue;
-										}
-										selstyle[skey] = tmpstyle[skey];
-									}
-									break;
-								}
-							}
-						}
-					}
-				}
-
-				if (this.mapcontroller.drawnrasters.length > 0 && this.lconfig[layername].style.overraster !== undefined && !this_has_bgdependent) {
-					tmpstyle = this.lconfig[layername].style.overraster;
-					for (var skey in tmpstyle) {
-						if (!tmpstyle.hasOwnProperty(skey)) {
-							continue;
-						}
-						selstyle[skey] = tmpstyle[skey];
-					}
-				}
-				
 			} else if (this.lconfig[layername]["condstyle"] !== undefined && this.lconfig[layername]["condstyle"] != null) {
-				selstyle = this.lconfig[layername]["condstyle"]["default"];
-				out_return_obj.perattribute = this.lconfig[layername]["condstyle"]["perattribute"];
-				out_return_obj.permode = this.lconfig[layername]["condstyle"]["permode"];
+				selstyle = clone(this.lconfig[layername]["condstyle"]["default"]);
+				out_return_obj.perattribute = clone(this.lconfig[layername]["condstyle"]["perattribute"]);
+				out_return_obj.permode = clone(this.lconfig[layername]["condstyle"]["permode"]);
 			}			
 		}
 		
 		if (selstyle != null) {
 		
 			// console.log(selstyle);
+			
+			// scale dependent rendering
+			if (selstyle.scaledependent !== undefined) 
+			{
+				for (var cls_scl_val in selstyle.scaledependent) 
+				{
+					p_scale_val = this.mapcontroller.getScale();
+					if (selstyle.scaledependent.hasOwnProperty(cls_scl_val) && 
+						(p_scale_val >= cls_scl_val && (dep_rendering_scaleval == null || cls_scl_val > dep_rendering_scaleval))
+						) {
+							dep_rendering_scaleval = cls_scl_val;
+					}
+				}
+				
+				if (dep_rendering_scaleval != null)
+				{
+					if (selstyle.scaledependent[dep_rendering_scaleval] !== undefined) {
+						tmpstyle = selstyle.scaledependent[dep_rendering_scaleval];
+						for (var skey in tmpstyle) {
+							if (!tmpstyle.hasOwnProperty(skey)) {
+								continue;
+							}
+							selstyle[skey] = tmpstyle[skey];
+						}
+					}
+				}
+				
+				delete selstyle.scaledependent;
+			}
+
+			if (selstyle.backgroundependent !== undefined) {
+				var lwcr, lr = [];
+				this.mapcontroller.rcvctrler.getRasterNames(lr, true);
+				for (var bkraster in selstyle.backgroundependent) {
+					if (selstyle.backgroundependent.hasOwnProperty(bkraster)) {
+						lwcr = bkraster.toLowerCase();
+						if (lr.indexOf(lwcr) >= 0) {
+							if (selstyle.backgroundependent[bkraster] !== undefined) {
+								this_has_bgdependent = true;
+								tmpstyle = selstyle.backgroundependent[bkraster];
+								for (var skey in tmpstyle) {
+									if (!tmpstyle.hasOwnProperty(skey)) {
+										continue;
+									}
+									selstyle[skey] = tmpstyle[skey];
+								}
+								break;
+							}
+						}
+					}
+				}
+				delete selstyle.backgroundependent;
+			}
+
+			if (this.mapcontroller.drawnrasters.length > 0 && selstyle.overraster !== undefined && !this_has_bgdependent) {
+				tmpstyle = selstyle.overraster;
+				for (var skey in tmpstyle) {
+					if (!tmpstyle.hasOwnProperty(skey)) {
+						continue;
+					}
+					selstyle[skey] = tmpstyle[skey];
+				}
+			}
 
 			if (selstyle.placementtype === undefined) {
 				out_return_obj.placementtype = "CENTER";
-				console.warn("Missing lable placement type, defaulting to CENTER, layer:"+layername);
+				console.warn("Missing label placement type, defaulting to CENTER, layer:"+layername);
 			} else {
 				out_return_obj.placementtype = selstyle.placementtype;
 			}
 			out_return_obj.activestyle = selstyle;
-			this.mapcontroller.pushStyle(selstyle, out_return_obj.fillStroke, opt_displaylayer);
+			this.mapcontroller.pushStyle(selstyle, out_return_obj.fillStroke, layername, opt_displaylayer);
+			
 		} else {
 			console.trace("selstyle lbl activateLayerStyle NULO:"+layername);
 		}	
@@ -887,13 +886,16 @@ function MapLabelEngine(p_mapcontroller) {
 	}
 
 	// Generates all labels for a layer
-	this.genLabels = function(p_scale_val, p_layername, p_actstyle_retobj, p_inscreenspace, opt_displaylayer) 
+	this.genLabels = function(p_scale_val, p_layername, p_actstyle_retobj, p_inscreenspace, p_outobject, opt_displaylayer) 
 	{
 		'use strict';
 		
 		var k, tmppt=[], startpt=[], placementt = null, ctrlcnt = 10000, lbl_components=[];
 		
 		var t0=0, t1=0, t2=0;
+		
+		p_outobject['label_count'] = 0;
+		p_outobject['sample'] = "";
 		
 		//console.log(p_actstyle_retobj);
 		
@@ -904,117 +906,7 @@ function MapLabelEngine(p_mapcontroller) {
 		if (this.labelgen_profiling) {
 			t0 = Date.now();
 		}
-
-		/*
-		var mapCtrller = this.mapcontroller;
-		
-		let fillStroke = {
-			"fill": false,
-			"stroke": false
-		}
-		
-		var this_styleobj = {};
-		for (var sty_attr in this.lconfig[p_layername].style) 
-		{
-			if (this.lconfig[p_layername].style.hasOwnProperty(sty_attr) && sty_attr != "scaledependent" && sty_attr != "overraster" && sty_attr != "backgroundependent") {
-				this_styleobj[sty_attr] = this.lconfig[p_layername].style[sty_attr];
-				if (sty_attr.indexOf("fill") >= 0) {
-					fillStroke["fill"] = true;
-				}
-				if (sty_attr.indexOf("stroke") >= 0) {
-					fillStroke["stroke"] = true;
-				}
-			}
-		}
-		
-		// Scale dependent label rendering -----------------------------
-		var dep_rendering_scaleval = null;
-		if (this.lconfig[p_layername].style.scaledependent !== undefined) 
-		{
-			for (var cls_scl_val in this.lconfig[p_layername].style.scaledependent) 
-			{
-				if (this.lconfig[p_layername].style.scaledependent.hasOwnProperty(cls_scl_val) && 
-				    (p_scale_val >= cls_scl_val && (dep_rendering_scaleval == null || cls_scl_val > dep_rendering_scaleval))
-				    ) {
-						dep_rendering_scaleval = cls_scl_val;
-				}
-			}
-		}
-
-		if (dep_rendering_scaleval != null)
-		{
-			for (var sty_attr in this.lconfig[p_layername].style.scaledependent[dep_rendering_scaleval]) 
-			{
-				if (this.lconfig[p_layername].style.scaledependent[dep_rendering_scaleval].hasOwnProperty(sty_attr)) {
-					this_styleobj[sty_attr] = this.lconfig[p_layername].style.scaledependent[dep_rendering_scaleval][sty_attr];
-					if (sty_attr.indexOf("fill") >= 0) {
-						fillStroke["fill"] = true;
-					}
-					if (sty_attr.indexOf("stroke") >= 0) {
-						fillStroke["stroke"] = true;
-					}
-				}
-			}
-		}
-		// -------------------------------------------------------------
-
-		// Background dependent label rendering ------------------------
-		let this_has_bgdependent = false;
-		if (this.lconfig[p_layername].style.backgroundependent !== undefined) {
-			let lwcr, lr = [];
-			mapCtrller.rcvctrler.getRasterNames(lr, true);
-			for (let bkraster in this.lconfig[p_layername].style.backgroundependent) {
-				if (this.lconfig[p_layername].style.backgroundependent.hasOwnProperty(bkraster)) {
-					lwcr = bkraster.toLowerCase();
-					if (lr.indexOf(lwcr) >= 0) {
-						this_has_bgdependent = true;
-						for (var sty_attr in this.lconfig[p_layername].style.backgroundependent[bkraster]) 
-						{
-							if (this.lconfig[p_layername].style.backgroundependent[bkraster].hasOwnProperty(sty_attr)) {
-								this_styleobj[sty_attr] = this.lconfig[p_layername].style.backgroundependent[bkraster][sty_attr];
-								if (sty_attr.indexOf("fill") >= 0) {
-									fillStroke["fill"] = true;
-								}
-								if (sty_attr.indexOf("stroke") >= 0) {
-									fillStroke["stroke"] = true;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		// -------------------------------------------------------------
-		
-		if (mapCtrller.drawnrasters.length > 0 && this.lconfig[p_layername].style.overraster !== undefined && !this_has_bgdependent) {
-			for (var or_sty_attr in this.lconfig[p_layername].style.overraster) 
-			{
-				if (this.lconfig[p_layername].style.overraster.hasOwnProperty(or_sty_attr)) {
-					this_styleobj[or_sty_attr] = this.lconfig[p_layername].style.overraster[or_sty_attr];
-					if (or_sty_attr.indexOf("fill") >= 0) {
-						fillStroke["fill"] = true;
-					}
-					if (or_sty_attr.indexOf("stroke") >= 0) {
-						fillStroke["stroke"] = true;
-					}
-				}
-			}		
-		}
-		* */
-		
-		/*
-		console.log("labels:"+p_layername);
-		console.log(this.lconfig[p_layername].style);
-		*/
-			
-		/*
-		if (this.lconfig[p_layername].style.placementtype !== undefined) {
-			placementt = this_styleobj.placementtype;
-		} else {
-			throw new Error("No placement type for labels in layer " + p_layername);
-			return;
-		}*/
-		
+	
 		var grCtrller = this.mapcontroller.getGraphicController();		
 		if (opt_displaylayer != null) {
 			grCtrller.setActiveDisplayLayer(opt_displaylayer);
@@ -1031,219 +923,16 @@ function MapLabelEngine(p_mapcontroller) {
 		{
 			ctrlcnt--;
 			k = 0;
+			p_outobject['label_count']++;
 			
 			// this.lbl_gen = function(p_text, p_coords, p_pathlevels, p_placementttype, p_fillstroke, p_styleobj, opt_displaylayer)
+			
+			if (p_outobject['sample'].length == 0)  {
+				p_outobject['sample'] = lbl_components[0];
+			}
 	
 			this.lbl_gen(lbl_components[0], lbl_components[1], lbl_components[2], placementtype, fillstroke, active_style, p_inscreenspace, opt_displaylayer);
 			
-			/*
-			if (false && lbl_components[0]!=null)  // text
-			{
-				switch(placementtype.toUpperCase()) 
-				{
-					case "CENTER":
-						var anchpt = [];
-						geom.pathCenter(lbl_components[1], lbl_components[2], anchpt);				
-						grCtrller.saveCtx();
-						
-						//stdfillstyle = grCtrller.getFillStyle();
-						
-						grCtrller.setTextAlign('center');
-
-						// shadow
-						//grCtrller.setFillStyle('#000');
-						//grCtrller.rotatedText(lbl_components[0], anchpt, 0, p_fillstroke);
-
-						// HARDCODED
-						//anchpt[0] = anchpt[0] - 2;
-						//anchpt[1] = anchpt[1] - 2;
-						//grCtrller.setFillStyle(stdfillstyle);
-
-						if (this_styleobj.fillcolor !== undefined) {
-							grCtrller.setFillStyle(this_styleobj.fillcolor);
-						}
-						if (this_styleobj.strokecolor !== undefined) {
-							grCtrller.setStrokeStyle(this_styleobj.strokecolor);
-						}
-
-						grCtrller.rotatedText(lbl_components[0], anchpt, 0, p_fillstroke);
-						
-						grCtrller.restoreCtx();
-						break;
-
-					// along polylines
-					case "ALONG":
-						
-						txtLen = grCtrller.measureTextWidth(lbl_components[0]);
-						featLen = geom.pathLength(lbl_components[1]);
-						
-						if (featLen >= 9 * txtLen) {
-							k = 4;
-						} else if (featLen >= 7 * txtLen) {
-							k = 3;
-						} else if (featLen >= 5 * txtLen) {
-							k = 2;
-						} else if (featLen >= txtLen) {
-							k = 1;
-						}
-						
-						var maxk = 0;
-						if (k>0) 
-						{
-							steplen = (featLen - k * txtLen) / (k + 1);
-							stlen = steplen;	
-							for (var i=0; i<=k; i++) {
-
-								this.labelAlongPath(lbl_components[0], lbl_components[1], 
-										stlen, 
-										charsz, p_fillstroke, opt_displaylayer);
-
-								stlen += txtLen + stlen;
-								
-							}
-						}
-						break;
-
-					// oriented according to a leader line
-					case "LEADER":
-						
-						var maxscl, doarrow = false, anchpt = [], angle_ret=[];						
-						var coords, offsetA = 10, offsetB = 8, offsetC = 2, arrowang = geom.deg2Rad(15);
-
-						geom.twoPointAngle(
-								[lbl_components[1][0], lbl_components[1][1]], 
-						        [lbl_components[1][2], lbl_components[1][3]],
-						        angle_ret
-						);
-
-						grCtrller.saveCtx();
-						
-						if (this_styleobj.leader_arrowfillcolor !== undefined) {
-							grCtrller.setFillStyle(this_styleobj.leader_arrowfillcolor);
-						}
-						if (this_styleobj.leader_arrowmaxscale !== undefined) {
-							maxscl = this_styleobj.leader_arrowmaxscale;
-							if (mapCtrller.getScale() <= maxscl) {
-								doarrow = true;
-							}
-						}
-						
-						startpt = [lbl_components[1][2], lbl_components[1][3]];
-
-						// First and third quadrants - text aligns left
-						if (angle_ret[1] == 2 || angle_ret[1] == 3) 
-						{
-							// arrow
-							if (doarrow)
-							{
-								coords = [startpt[0], startpt[1]];
-															
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0]-arrowang, offsetB, tmppt);
-								coords.push(tmppt[0]);
-								coords.push(tmppt[1]);
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0]+arrowang, offsetB, tmppt);
-								coords.push(tmppt[0]);
-								coords.push(tmppt[1]);
-								coords.push(startpt[0]);
-								coords.push(startpt[1]);
-
-								if (this_styleobj.leader_arrowfillcolor !== undefined) {
-									grCtrller.setFillStyle(this_styleobj.leader_arrowfillcolor);
-								}
-
-								grCtrller.drawSimplePath(coords, false, true, null, 
-										true, null, false, false); 
-
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0], offsetA, anchpt);
-								
-							} else {
-								geom.applyPolarShiftTo(startpt, 
-									angle_ret[0], offsetC, anchpt);
-							}
-							
-							grCtrller.setTextAlign('left');
-						} 
-						else 
-						{
-							// First and third quadrants - text aligns right
-							
-							// arrow
-							//console.log(doarrow+" 2");
-							if (doarrow)
-							{
-								coords = [startpt[0], startpt[1]];
-															
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0]-arrowang, -offsetB, tmppt);
-
-								coords.push(tmppt[0]);
-								coords.push(tmppt[1]);
-
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0]+arrowang, -offsetB, tmppt);
-
-								coords.push(tmppt[0]);
-								coords.push(tmppt[1]);
-								coords.push(startpt[0]);
-								coords.push(startpt[1]);
-	
-								if (this_styleobj.leader_arrowfillcolor !== undefined) {
-									grCtrller.setFillStyle(this_styleobj.leader_arrowfillcolor);
-								}
-								
-								grCtrller.drawSimplePath(coords, false, true, 
-										null, true, null, false, false); 
-
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0], -offsetA, anchpt);
-								
-							} else {
-								geom.applyPolarShiftTo(startpt, 
-										angle_ret[0], -offsetC, anchpt);
-							}
-
-							grCtrller.setTextAlign('right');
-						}
-						
-						
-						if (this_styleobj.leader_textfillcolor !== undefined) {
-							grCtrller.setFillStyle(this_styleobj.leader_textfillcolor);
-						}
-						if (this_styleobj.leader_textstrokecolor !== undefined) {
-							grCtrller.setStrokeStyle(this_styleobj.leader_textstrokecolor);
-						}
-						if (this_styleobj.leader_textlinewidth !== undefined) {
-							grCtrller.setLineWidth(this_styleobj.leader_textlinewidth);
-						}
-
-						**
-						 * Label SHADOWS
-						 * Slows down display too much -- Firefox Quantum 65.0.2
-						if (this_styleobj.leader_shadowcolor !== undefined) {
-							grCtrller.setShadowColor(this_styleobj.leader_shadowcolor);
-						}
-						if (this_styleobj.leader_shadowoffsetx !== undefined) {
-							grCtrller.setShadowOffsetX(this_styleobj.leader_shadowoffsetx);
-						}
-						if (this_styleobj.leader_shadowoffsety !== undefined) {
-							grCtrller.setShadowOffsetY(this_styleobj.leader_shadowoffsety);
-						}
-						if (this_styleobj.leader_shadowblur !== undefined) {
-							grCtrller.setShadowBlur(this_styleobj.leader_shadowblur);
-						}
-						***
-						
-						grCtrller.rotatedText(lbl_components[0], anchpt, angle_ret[0], p_fillstroke);
-						grCtrller.restoreCtx();
-						
-						break;
-						
-				}
-				
-			}*/
 			nxtlbl_exists = this.nextLabel(p_layername, lbl_components);
 		}
 		

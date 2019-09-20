@@ -13,7 +13,34 @@ var MapCtrlConst = {
 	MINSCALE: 100,
 	MAXLAYERCOUNT: 300,
 	TOCBCKGRDCOLOR: "rgba(24, 68, 155, 0.85)",
-	DEFAULT_USE_SCREEN_COORD_SPACE: true
+	DEFAULT_USE_SCREEN_COORD_SPACE: true,
+	getValue: function(p_vname) {
+		ret = null;
+		switch (p_vname) {
+			case 'MINSCALE':
+				if (MapCtrlOverride !== undefined && MapCtrlOverride.MINSCALE !== undefined ) {
+					ret = MapCtrlOverride.MINSCALE;
+				} else {
+					ret = this.MINSCALE;
+				}
+				break;
+			case 'TOCBCKGRDCOLOR':
+				if (MapCtrlOverride !== undefined && MapCtrlOverride.TOCBCKGRDCOLOR !== undefined ) {
+					ret = MapCtrlOverride.TOCBCKGRDCOLOR;
+				} else {
+					ret = this.TOCBCKGRDCOLOR;
+				}
+				break;
+			case 'DEFAULT_USE_SCREEN_COORD_SPACE':
+				if (MapCtrlOverride !== undefined && MapCtrlOverride.DEFAULT_USE_SCREEN_COORD_SPACE !== undefined ) {
+					ret = MapCtrlOverride.DEFAULT_USE_SCREEN_COORD_SPACE;
+				} else {
+					ret = this.DEFAULT_USE_SCREEN_COORD_SPACE;
+				}
+				break;
+		}
+		return ret;
+	}
 };
 
 // opt_alternate_Layer - indica se o filtro se destina a ser aplicado APENAS
@@ -294,7 +321,8 @@ function Envelope2D() {
 	this.i18nmsgs = {
 			"pt": {
 				"NONEW": "'Envelope2D' é classe, o seu construtor foi invocado sem 'new'",					
-				"INVALIDPT": "Ponto inválido"					
+				"INVALIDPT": "Ponto inválido",
+				"NO": ""				
 			}
 		};
 	this.msg = function(p_msgkey) {
@@ -775,67 +803,89 @@ function emptyImageURL() {
 	return '';
 }
 
-function layerActivateTOC(p_domelem, p_ctx, p_styleobj, b_geomtype) {
+function layerActivateTOC(p_domelem, p_ctx, p_styleobj, b_geomtype, p_layername, p_patterns, p_labelsample, p_bxwith, p_bxheight) {
 	
 	p_domelem.style.color = 'white';
 	p_ctx.fillStyle = MapCtrlConst.TOCBCKGRDCOLOR;
 	p_ctx.strokeStyle = p_ctx.fillStyle;
-	p_ctx.fillRect (0, 0, 28, 20);
-	p_ctx.strokeRect (0, 0, 28, 20);
-
+	p_ctx.fillRect (0, 0, p_bxwith, p_bxheight);
+	p_ctx.strokeRect (0, 0, p_bxwith, p_bxheight);
+	
+	let innerw = p_bxwith - 4;
+	let innerh = p_bxheight - 4;
+	
 	styleflags = {};
-	ctxGenericApplyStyle(p_ctx, p_styleobj, styleflags);
+	ctxGenericApplyStyle(p_ctx, p_styleobj, p_patterns, styleflags);
 
 	if (b_geomtype == "POLY") {
 		if (styleflags.fill) {
-			p_ctx.fillRect (3, 3, 22, 14);
+			p_ctx.fillRect (3, 3, innerw, innerh);
 		}
 		if (styleflags.stroke) {
-			p_ctx.strokeRect (3, 3, 22, 14);
+			p_ctx.strokeRect (3, 3, innerw, innerh);
 		}
 	} else if (b_geomtype == "LINE") {
 		if (styleflags.stroke) {
 			p_ctx.beginPath();
-			p_ctx.moveTo(3,14);
+			p_ctx.moveTo(3,innerh);
 			p_ctx.lineTo(8,3);
-			p_ctx.lineTo(17,14);
-			p_ctx.lineTo(22,3);
+			p_ctx.lineTo(innerw-5,innerh);
+			p_ctx.lineTo(innerw,3);
 			p_ctx.stroke();
 		}
 	} else if (b_geomtype == "POINT") {
 		//
 		//
+		//console.log([p_layername,styleflags,p_styleobj]);
+		
+		if (p_styleobj.font !== undefined) {
+			p_ctx.font = p_styleobj.font;
+		}
+		
+		let lbltxt = "Az";
+		if (p_labelsample) {
+			lbltxt = p_labelsample.slice(0,3);
+		}
+		//console.log(p_ctx.fillStyle);
+		p_ctx.fillText(lbltxt, 14, 12);
 	}
 
 }
 
-function layerDeactivateTOC(p_domelem, p_ctx) {
+function layerDeactivateTOC(p_domelem, p_ctx, p_patterns, p_bxwith, p_bxheight) {
 	
 	p_domelem.style.color = '#a0a0a0';
 	p_ctx.fillStyle = MapCtrlConst.TOCBCKGRDCOLOR;
 	p_ctx.strokeStyle = p_ctx.fillStyle;
-	p_ctx.fillRect (0, 0, 28, 20);
-	p_ctx.strokeRect (0, 0, 28, 20);
+	p_ctx.fillRect (0, 0, p_bxwith, 20);
+	p_ctx.strokeRect (0, 0, p_bxwith, 20);
+
+	let innerw = p_bxwith - 4;
+	let innerh = p_bxheight - 4;
+	let maxw = innerw-6;
+	let maxh = innerh;
 
 	styleflags = {};
 	ctxGenericApplyStyle(p_ctx, {
 		"strokecolor": "#a0a0a0",
 		"linewidth": 2
-	}, styleflags);
+	}, p_patterns, styleflags);
 	
 	p_ctx.beginPath();
-	p_ctx.moveTo(4,15);
-	p_ctx.lineTo(23,4);
+	p_ctx.moveTo(4,maxh);
+	p_ctx.lineTo(innerw,4);
 	p_ctx.stroke();
 	p_ctx.beginPath();
 	p_ctx.lineTo(4,4);
-	p_ctx.lineTo(23,15);
+	p_ctx.lineTo(innerw,maxh);
 	p_ctx.stroke();
 }
 
+// Legend Manager
 function StyleVisibility(p_mapctrlr, p_config) {
 
-	this.styles = [];
+	this.styles = {};
+	this.stylecount = 0;
 	this.orderedindexes = [];
 	this.elementstats = {};
 	this._visibilities = {};
@@ -843,6 +893,7 @@ function StyleVisibility(p_mapctrlr, p_config) {
 	
 	this.widget_id = null;
 	this.maplyrconfig = p_config.lconfig;
+	this.maplyrnames = p_config.lnames;
 	this.mapctrlssetup = p_config.controlssetup;
 	this.mapcontroller = p_mapctrlr;
 	
@@ -876,8 +927,8 @@ function StyleVisibility(p_mapctrlr, p_config) {
 		this.widget_id = p_widget_id;
 	};	
 	this.clearvis = function(p_hard) {
-		//console.log("clearvis:"+p_hard);
-		if (p_hard) {
+		/* Suspenso em 25/06/2019 por não permitir manter o estado da TOC entre pans e zooms
+		if (false && p_hard) {
 			this.orderedindexes.length = 0;
 			this.elementstats = {};
 			for (let k_lname in this._visibilities) {
@@ -886,12 +937,13 @@ function StyleVisibility(p_mapctrlr, p_config) {
 				}		
 			}	
 		} else {
+		*/
 			for (let k_idx in this.elementstats) {
 				if (this.elementstats.hasOwnProperty(k_idx)) {
-					this.elementstats[k_idx] = [0,0,0,0];
+					this.elementstats[k_idx] = [0,0,0,0,null];
 				}		
 			}	
-		}	
+		//}	
 		//console.log(this.elementstats);
 
 	};
@@ -902,30 +954,43 @@ function StyleVisibility(p_mapctrlr, p_config) {
 		}
 		return ret;
 	};
+	this.isLyrTOCVisibilityTrueOrUndef = function(p_lname) {
+		let ret = true;
+		if (this._visibilities[p_lname] !== undefined) {
+			ret = this._visibilities[p_lname];
+		}
+		return ret;
+	};
 	this.changeVisibility = function(p_lname, p_isvisible) {
 		this._visibilities[p_lname] = p_isvisible;
 	};
 	this.toggleVisibility = function(p_lname) {
+		let lviz = this.mapcontroller.checkLayerVisibility(p_lname);
+		let ffound = this.mapcontroller.featuresFound(p_lname);
+		/*if (!lviz) {
+			aVISAR O UTILLIZADOR
+		}*/
+		if (!lviz || ffound < 0) {
+			this._visibilities[p_lname] = false;
+			return false;
+		}
 		this._visibilities[p_lname] = !this._visibilities[p_lname];
+		return true;
 	};
 	this.getGeomType = function(p_idx) {
 		
-		ret = "NONE";
+		let elidx, maxv=0, maxidx=-1, ret = "NONE";
 		if (this.elementstats[p_idx] !== undefined && this.elementstats[p_idx].length !== undefined) {
-			var maxlist = this.elementstats[p_idx].reduce(function(acc, currv, curridx) {
-				let mv, retlist = [acc[0], acc[1]];
-				mv = Math.max(retlist[1], currv);
-				if (mv != retlist[1]) {
-					retlist[1] = mv;
-					if (retlist[1] == currv) {
-						retlist[0] = curridx;
-					}
-				}
-				return retlist;
-			}, [-1,0]);
 			
-			if (maxlist[0] >= 0) {
-				switch(maxlist[0]) {
+			for (elidx=0; elidx<4; elidx++) {
+				if (this.elementstats[p_idx][elidx] > maxv) {
+					maxv = this.elementstats[p_idx][elidx];
+					maxidx = elidx;
+				}
+			}
+
+			if (maxidx >= 0) {
+				switch(maxidx) {
 					case 0:
 						ret = "POINT";
 						break;
@@ -943,8 +1008,14 @@ function StyleVisibility(p_mapctrlr, p_config) {
 	this.updateWidget = function(p_title_caption_key, p_i18n_function) {
 
 		let leg_container = null;	
-		let t, r, d, d2, w, x, capparent, oidx, sty, lyrtitle, gtype;
+		let oidx;
+		let t, r, d, d2, w, x, capparent, sty, lyrtitle, gtype;
+		let tcid, tcfn;
 		let currlayercaption = null;
+		let lname;
+		let topPadLayerHeading = '6px';
+		let botPadLayerHeading = '4px';
+		let ordredstyles = [];
 		
 		let items = 0, cnvidx = -1, caption_created=false;
 		
@@ -972,113 +1043,180 @@ function StyleVisibility(p_mapctrlr, p_config) {
 				capparent = document.createElement("p");	
 				d.appendChild(capparent);
 				
-				for (var i=this.orderedindexes.length-1; i>=0; i--) {
+				//for (var i=this.orderedindexes.length-1; i>=0; i--) {
 					
-					oidx = this.orderedindexes[i];	
-					if (Object.keys(this.elementstats).indexOf(oidx.toString()) < 0) {
+				for (var i=this.maplyrnames.length-1; i>=0; i--) {
+				//for (var i=0; i<this.maplyrnames.length; i++) {
+					
+					lname = this.maplyrnames[i];
+					if (this.styles[lname] === undefined) {
 						continue;
 					}
 					
-					sty = this.styles[oidx];					
-					if (sty == null) {
-						continue;
-					}
+					ordredstyles.length = 0;
 
-					if (sty["lyrlabelkey"] !== undefined && sty["lyrlabelkey"].length > 0) {
-						lyrtitle = p_i18n_function(sty["lyrlabelkey"]);
-					}
-					
-					items++;
-					
-					if (currlayercaption != lyrtitle && lyrtitle.length > 0) {	
-						
-						if (!caption_created) {
-							createTitleCaption(capparent, p_title_caption_key);
-							caption_created = true;
+					for (var k=0; k<this.styles[lname].length; k++) {
+						sty = this.styles[lname][k];
+						if (sty == null) {
+							continue;
 						}
-						r = document.createElement("tr");	
-						t.appendChild(r);				
-						d = document.createElement("td");	
-						
-						if (sty.style["labelkey"] !== undefined) {
-							d.colSpan = 2;
-						}
-						r.appendChild(d);	
-						
-						d.insertAdjacentHTML('afterbegin',lyrtitle);
-						setClass(d, "visctrl-entry");
+						ordredstyles.push([sty._index, sty]);
 					}
-					currlayercaption = 	lyrtitle;	
 					
-					if (sty.style["labelkey"] !== undefined) {
-
-						if (!caption_created) {
-							createTitleCaption(capparent, p_title_caption_key);
-							caption_created = true;
-						}
-						
-						r = document.createElement("tr");	
-						t.appendChild(r);				
-						d = document.createElement("td");	
-						r.appendChild(d);				
-						
-						d.insertAdjacentHTML('afterbegin',p_i18n_function(sty.style["labelkey"]));						
-						if (currlayercaption) {
-							setClass(d, "visctrl-subentry");
-						} else {
-							setClass(d, "visctrl-entry");
-						}
-					}
-
-					sepbar = false;
-					if (cnvidx >= 0 && getClass(d).indexOf("visctrl-entry") >= 0) {
-						d.setAttribute('style', "border-top: 1px dotted lightgrey");
-						sepbar = true;
-					}
-						
-					d2 = document.createElement("td");	
-					r.appendChild(d2);				
-
-					if (sepbar && cnvidx >= 0) {
-						d2.setAttribute('style', "border-top: 1px dotted lightgrey");
-					}
-
-					cnvidx++;
-					// Legend symbol
-					canvasel = document.createElement('canvas');
-					canvasel.setAttribute('class', 'visctrl-classimg');
-					canvasel.setAttribute('id', 'cnv'+cnvidx);
-					canvasel.setAttribute('width', '28');
-					canvasel.setAttribute('height', '20');
+					// order styles by _index value
+					ordredstyles.sort(function(a,b) {
+						return a[0] - b[0];
+					});
 					
-					
-					let ctx = canvasel.getContext('2d');
-					gtype = this.getGeomType(oidx);
-					if (this.isLyrTOCVisibile(sty.lname) && gtype != "NONE") {
-						layerActivateTOC(d, ctx, sty.style, gtype);
-					} else {
-						layerDeactivateTOC(d, ctx);
-					}
+					for (var j=0; j<ordredstyles.length; j++) {
+						
+						oidx = ordredstyles[j][0];
+						sty = ordredstyles[j][1];
 
-					(function(p_self, p_canvasel, p_elem, p_ctx, p_lname, p_styleobj, p_oidx) {						
-						attEventHandler(p_canvasel, 'click',
-							function(evt) {
-								let v_gtype = p_self.getGeomType(p_oidx); 
-								p_self.toggleVisibility(p_lname);
-								/*
-								 * if (p_self.isLyrTOCVisibile(p_lname) && (v_gtype != "NONE")) {
-									layerActivateTOC(p_elem, p_ctx, p_styleobj, v_gtype);
-								} else {
-									layerDeactivateTOC(p_elem, p_ctx);
-								}
-								*/
-								p_self.mapcontroller.redraw(false, null, null, true);
-								p_self.mapcontroller.onChangeFinish("toggleTOC");
+						//oidx = sty._index;
+						gtype = this.getGeomType(oidx);
+						
+						//oidx = this.orderedindexes[i];	
+						if (Object.keys(this.elementstats).indexOf(oidx.toString()) < 0) {
+							continue;
+						}
+
+						let isMapVisible = this.mapcontroller.checkLayerVisibility(sty.lname);
+						if (!this.isLyrTOCVisibile(sty.lname) || !isMapVisible || gtype == "NONE") {
+							// if layer style was dinamically added and is now deactivated, don't create TOC entry
+							
+							 if (sty['transient'] !== undefined && sty['transient']) {
+								continue;
 							}
-						);
-					})(this, canvasel, d, ctx, sty.lname, sty.style, oidx);
+						}
+						
+						if ((sty["lyrlabelkey"] === undefined || sty["lyrlabelkey"].length < 1) && (sty.style["labelkey"] === undefined || sty.style["labelkey"].length < 1)) {
+							continue;
+						}
+						
+						if (sty["lyrlabelkey"] !== undefined && sty["lyrlabelkey"].length > 0) {
+							lyrtitle = p_i18n_function(sty["lyrlabelkey"]);
+						}
 
-					d2.appendChild(canvasel);
+						items++;
+						sepbar = false;
+					
+						if (currlayercaption != lyrtitle && lyrtitle.length > 0) {	
+							
+							if (!caption_created) {
+								createTitleCaption(capparent, p_title_caption_key);
+								caption_created = true;
+							}
+							r = document.createElement("tr");	
+							t.appendChild(r);				
+							d = document.createElement("td");	
+							
+							if (sty.style["labelkey"] !== undefined) {
+								d.colSpan = 2;
+								d.style.paddingTop = topPadLayerHeading;
+								d.style.paddingBottom = botPadLayerHeading;
+							}
+							r.appendChild(d);	
+							
+							//console.log(sty);
+							
+							if (sty["thematic_control"]) {
+								tcid = sty["thematic_control"]+"_opener";
+								//setClass(d, tcid);
+								d.insertAdjacentHTML('afterbegin', String.format("<span class='click' id='{0}'>{1}</span>", tcid, lyrtitle));
+								tcfn = sty["thematic_control"]+"_opener_fn";
+								if (window[tcfn] !== undefined) {
+										attEventHandler(tcid, 'click',
+											function(evt) { window[tcfn](false); }
+										);
+								}
+							} else {
+								d.insertAdjacentHTML('afterbegin', lyrtitle);
+							}
+
+							setClass(d, "visctrl-entry");
+							setClass(d, "clA");
+							if (cnvidx >= 0) {
+								setClass(d, "topbar");
+								sepbar = true;
+							}
+
+						}
+						currlayercaption = 	lyrtitle;	
+					
+						if (sty.style["labelkey"] !== undefined) {
+
+							sepbar = false;
+							
+							if (!caption_created) {
+								createTitleCaption(capparent, p_title_caption_key);
+								caption_created = true;
+							}
+							
+							r = document.createElement("tr");	
+							t.appendChild(r);				
+							d = document.createElement("td");	
+							r.appendChild(d);				
+							
+							d.insertAdjacentHTML('afterbegin', p_i18n_function(sty.style["labelkey"]));						
+							if (currlayercaption) {
+								setClass(d, "visctrl-subentry");
+							} else {
+								setClass(d, "visctrl-entry");
+								if (cnvidx >= 0) {
+									setClass(d, "topbar");
+									sepbar = true;
+								}
+							}
+						}
+
+						d2 = document.createElement("td");	
+						r.appendChild(d2);				
+
+						if (sepbar && cnvidx >= 0) {
+							setClass(d2, "visctrl-entry");
+							setClass(d2, "topbar");
+						}
+						
+						let w = 40, h = 20;
+
+						cnvidx++;
+						// Legend symbol
+						canvasel = document.createElement('canvas');
+						canvasel.setAttribute('class', 'visctrl-classimg');
+						canvasel.setAttribute('id', 'cnv'+cnvidx);
+						canvasel.setAttribute('width', w);
+						canvasel.setAttribute('height', h);
+						
+						let ctx = canvasel.getContext('2d');
+						let lblsample = this.elementstats[oidx][4];
+						//console.log([sty.lname, this.isLyrTOCVisibile(sty.lname), gtype, isMapVisible]);
+						if (this.isLyrTOCVisibile(sty.lname) && isMapVisible && gtype != "NONE") {
+							layerActivateTOC(d, ctx, sty.style, gtype, sty.lname, this.mapcontroller.fillpatterns, lblsample, w, h );
+						} else {
+							layerDeactivateTOC(d, ctx, this.mapcontroller.fillpatterns, w, h);
+						}
+
+						(function(p_self, p_canvasel, p_elem, p_ctx, p_lname, p_styleobj, p_oidx) {						
+							attEventHandler(p_canvasel, 'click',
+								function(evt) {
+									//let v_gtype = p_self.getGeomType(p_oidx); 
+									//console.log(p_lname);
+									if (p_self.toggleVisibility(p_lname)) {
+										p_self.mapcontroller.redraw(false, null, null, true);
+										p_self.mapcontroller.onChangeFinish("toggleTOC");
+									} 
+								}
+							);
+						})(this, canvasel, d, ctx, sty.lname, sty.style, oidx);
+
+						d2.appendChild(canvasel);
+						
+						if (sepbar && cnvidx > 0) {
+							d2.style.paddingTop = topPadLayerHeading;
+						}
+
+					}
 				}
 			}
 			
@@ -1094,80 +1232,158 @@ function StyleVisibility(p_mapctrlr, p_config) {
 			}
 		}
 	};
-	
-	this.incrementElemStats = function(p_gtype, p_style_obj) {
-		let idx;			
+
+	this.incrementElemStats = function(p_gtype, p_style_obj, p_layername, opt_increment, opt_lblsample) {
+		let idx, inc;	
+		if (opt_increment) {
+			inc = opt_increment;
+		} else {
+			inc = 1;
+		}
 		if (p_style_obj["_index"] !== undefined) {
+			
 			idx = p_style_obj["_index"];
+			
+			// verificar se o estilo existe 
+			found = false;
+			for (let sti=0; sti<this.styles[p_layername].length; sti++) {
+				if (this.styles[p_layername][sti]["_index"] == idx) {
+					found = true;
+					break;
+				}
+			}
+			
+			//console.log([p_layername, idx, found]);
+			
+			if (!found) {
+				this.styles[p_layername].push({
+						"transient": true, 
+						"lname": p_layername,
+						"_index": idx,
+						"lyrlabelkey": (p_style_obj["lyrlabelkey"] !== undefined ? p_style_obj["lyrlabelkey"] : (p_style_obj["labelkey"] !== undefined ? p_style_obj["labelkey"] : "")),
+						"style": clone(p_style_obj)
+					});				
+			}
+			
 			if (this.orderedindexes.indexOf(idx) < 0) {
 				this.orderedindexes.push(idx);
 			}
 			if (this.elementstats[idx] === undefined) {
 										/* point, line, poly, undefined */
-				this.elementstats[idx] = [0,0,0,0];
+				this.elementstats[idx] = [0,0,0,0, null];
 			}
 
 			if (p_gtype.toUpperCase() == "POINT") {
-				this.elementstats[idx][0] = this.elementstats[idx][0] + 1;
+				this.elementstats[idx][0] = this.elementstats[idx][0] + inc;
+				if (opt_lblsample) {
+					this.elementstats[idx][4] = opt_lblsample;
+				}
 			} else if (p_gtype.toUpperCase() == "LINE") {
-				this.elementstats[idx][1] = this.elementstats[idx][1] + 1;
+				this.elementstats[idx][1] = this.elementstats[idx][1] + inc;
 			} else if (p_gtype.toUpperCase() == "POLY") {
-				this.elementstats[idx][2] = this.elementstats[idx][2] + 1;
+				this.elementstats[idx][2] = this.elementstats[idx][2] + inc;
 			} else {
-				this.elementstats[idx][3] = this.elementstats[idx][3] + 1;
+				this.elementstats[idx][3] = this.elementstats[idx][3] + inc;
 			}
-
 		}	
 	};
-	
-	let lc, cs;
-	for (let k_lname in this.maplyrconfig) {
+
+	let lc, cs, k_lname;
+	for (let kli=0; kli < this.maplyrnames.length; kli++) {
+		
+		k_lname = this.maplyrnames[kli];
+		
+		if (!this.maplyrconfig.hasOwnProperty(k_lname))	{
+			continue;
+		}
+		
 		lc = this.maplyrconfig[k_lname];
 		if (lc["style"] !== undefined && lc["style"] != null) {
-			lc["style"]["_index"] = this.styles.length;
+			lc["style"]["_index"] = this.stylecount;				
+			this.stylecount++;
 			this.changeVisibility(k_lname, true);
-			this.styles.push({
+			if (this.styles[k_lname] === undefined) {
+				this.styles[k_lname] = [];
+			}
+			this.styles[k_lname].push({
 					"lname": k_lname,
+					"_index": lc["style"]["_index"],
 					"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+					"thematic_control": (lc["thematic_control"] !== undefined ? lc["thematic_control"] : null),
 					"style": clone(lc["style"])
-				});
+				});				
 		} else if (lc["condstyle"] !== undefined && lc["condstyle"] != null) {
+			
 			cs = lc["condstyle"];
+			//console.log([k_lname, lc["labelkey"],lc["thematic_control"]]);
 			this.changeVisibility(k_lname, true);
+			if (this.styles[k_lname] === undefined) {
+				this.styles[k_lname] = [];
+			}
+
 			for (let k_cstype in cs) {
 				if (k_cstype == "default") {
-					cs[k_cstype]["_index"] = this.styles.length;
-					this.styles.push({
+					cs[k_cstype]["_index"] = this.stylecount;
+					this.stylecount++;
+					this.styles[k_lname].push({
 							"lname": k_lname,
+							"_index": cs[k_cstype]["_index"],
 							"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+							"thematic_control": (lc["thematic_control"] !== undefined ? lc["thematic_control"] : null),
 							"style": clone(cs[k_cstype])
 						});
 				} else if (k_cstype == "permode") {
 					for (let k_attrname in cs[k_cstype]) {
-						cs[k_cstype][k_attrname]["_index"] = this.styles.length;
-						this.styles.push({
+						cs[k_cstype][k_attrname]["_index"] = this.stylecount;
+						this.stylecount++;
+						this.styles[k_lname].push({
 								"lname": k_lname,
+								"_index": cs[k_cstype][k_attrname]["_index"],
 								"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+								"thematic_control": (lc["thematic_control"] !== undefined ? lc["thematic_control"] : null),
 								"style": clone(cs[k_cstype][k_attrname])
 							});
 					}
 				} else if (k_cstype == "perattribute") {
 					for (let k_attrname in cs[k_cstype]) {
+						if (k_attrname == "_#ALL#_") {
+							continue;
+						}
 						for (let i_class = 0; i_class < cs[k_cstype][k_attrname].length; i_class++) {
-							cs[k_cstype][k_attrname][i_class]["style"]["_index"] = this.styles.length;
-							this.styles.push({
+							cs[k_cstype][k_attrname][i_class]["style"]["_index"] = this.stylecount;
+							this.stylecount++;
+							this.styles[k_lname].push({
 									"lname": k_lname,
+									"_index": cs[k_cstype][k_attrname][i_class]["style"]["_index"],
 									"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+									"thematic_control": (lc["thematic_control"] !== undefined ? lc["thematic_control"] : null),
 									"style": clone(cs[k_cstype][k_attrname][i_class]["style"])
 								});
 						} 
 					}
 				}
 			}
-		} else if (lc["label"] !== undefined && lc["label"] != null && lc["label"]["style"] !== undefined && lc["label"]["style"] != null ) {
-			this.changeVisibility(k_lname, true);
+
+		//} else if (lc["label"] !== undefined && lc["label"] != null && lc["label"]["style"] !== undefined && lc["label"]["style"] != null ) {
+			//this.changeVisibility(k_lname, true);
 		} else if (lc["markerfunction"] !== undefined && lc["markerfunction"] != null) {
 			this.changeVisibility(k_lname, true);
+		} else if (lc["label"] !== undefined && lc["label"] != null && lc["label"]["style"] !== undefined && lc["label"]["style"] != null ) {
+
+			lc["label"]["style"]["_index"] = this.stylecount;				
+			this.stylecount++;
+			this.changeVisibility(k_lname, true);
+			if (this.styles[k_lname] === undefined) {
+				this.styles[k_lname] = [];
+			}
+			this.styles[k_lname].push({
+					"lname": k_lname,
+					"_index": lc["label"]["style"]["_index"],
+					"lyrlabelkey": (lc["labelkey"] !== undefined ? lc["labelkey"] : ""),
+					"thematic_control": (lc["thematic_control"] !== undefined ? lc["thematic_control"] : null),
+					"style": clone(lc["label"]["style"])
+				});
+				
 		}
 	}
 }
