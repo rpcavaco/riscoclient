@@ -441,7 +441,7 @@ function MapLabelEngine(p_mapcontroller) {
 				out_return_obj.placementtype = selstyle.placementtype;
 			}
 			out_return_obj.activestyle = selstyle;
-			this.mapcontroller.pushStyle(selstyle, out_return_obj.fillStroke, layername, opt_displaylayer);
+			this.mapcontroller.pushStyle(selstyle, out_return_obj.fillStroke, opt_displaylayer);
 			
 		} else {
 			console.trace("selstyle lbl activateLayerStyle NULO:"+layername);

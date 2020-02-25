@@ -277,13 +277,8 @@ function mouseWheelController(p_controls_mgr) {
 			op = target;
 		}
 		
-		let coords = [];
-		getEvtCoords(e, target, coords);
-		
-		//var xcoord = e.pageX - op.offsetLeft;
-		//var ycoord = e.pageY - op.offsetTop;
-		var xcoord = coords[0];
-		var ycoord = coords[1];
+		var xcoord = e.pageX - op.offsetLeft;
+		var ycoord = e.pageY - op.offsetTop;
 		
 		k = 1 + adelta/200.0;
 			
@@ -333,11 +328,9 @@ function touchController(p_controls_mgr) {
 	this.controls_mgr = p_controls_mgr;
 	this.timerId = null;
 	this.location = [];
-	this.waitPeriodMsec = 200;
+	this.waitPeriodMsec = 400;
 	
 	this.ongoingTouches = [];
-	this.zooming = false;
-	this.initialZoomFingerSeparation = null;
 	
 	this.clearReference = function() {
 		if (this.timerId != null) {
@@ -387,7 +380,6 @@ function touchController(p_controls_mgr) {
 		if (this.ongoingTouches.length == 1) {
 			ret = this.ongoingTouches[0];
 		} else if (this.ongoingTouches.length == 2) {
-			this.zooming = true;
 			this.dozoom();
 		}
 		return ret;
@@ -398,9 +390,6 @@ function touchController(p_controls_mgr) {
 		let ret = null, found = null;
 		let idx, touches = e.changedTouches;
 		let trg = getTarget(e);
-		let firstTouches = parseInt(this.ongoingTouches.length);
-		
-		//console.log("firstTouches:"+firstTouches+" touches:"+touches.length);
 
 		for (let i = 0; i < touches.length; i++) {
 			idx = this.ongoingTouchIndexById(touches[i].identifier);
@@ -411,20 +400,15 @@ function touchController(p_controls_mgr) {
 				this.ongoingTouches.splice(idx, 1);
 			}
 		}
-		if (firstTouches == 1) {
-			if (this.zooming) {
-				this.zooming = false;
-				this.initialZoomFingerSeparation = null;
-			} else {
-				ret = found;
-			}
+		if (touches.length == 1) {
+			ret = found;
 		}
 		return ret;
 	};
 
 	this.dozoom = function() {
 		
-		let xcoord, ycoord, dx=null, dy=null, d, t, sep, asep, newscale;
+		let xcoord, ycoord, dx=null, dy=null, d, t;
 		let coords=[], minx=999999, miny=999999;
 		
 		if (this.ongoingTouches.length != 2) {
@@ -461,35 +445,20 @@ function touchController(p_controls_mgr) {
 				dy = Math.abs(dy - coords[1]);
 			}
 		}
-
+		let newscale;
 		if (dx!=null && dy!=null) {	
 				
 			d = Math.sqrt(dx * dx + dy * dy);
-			if (this.initialZoomFingerSeparation == null) {
-				this.initialZoomFingerSeparation = d;
-			} else {
-				newscale = this.controls_mgr.the_map.getScale();
-				sep = d - this.initialZoomFingerSeparation;
-				asep = Math.abs(sep);
-				
-				if (asep > 5) { 
-					
-					k = 1 + asep/3000.0;
-					
-					if (sep > 0) {
-						newscale /= k;
-					}
-					else {
-						newscale *= k;
-					}
-				}
-					
-				xcoord = minx + dx;
-				ycoord = miny + dy;
-				
-				this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
-				
-				this.clearReference();
+			newscale = 180000 / d;
+			
+			xcoord = minx + dx;
+			ycoord = miny + dy;
+			
+			this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
+			
+			if (this.timerId != null) {
+				window.clearTimeout(this.timerId);
+			}
 
 			(function(p_self) {
 				p_self.timerId =  window.setTimeout(function(e) {
@@ -497,8 +466,6 @@ function touchController(p_controls_mgr) {
 					p_self.clearReference();
 				}, p_self.waitPeriodMsec);
 			})(this);
-			
-		  }
 		}		
 	};
 }
@@ -700,7 +667,7 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 				this.measvalterrain = formatFracDigits(geom.distance([this.start_map[0], this.start_map[1]], [current_map[0], current_map[1]]), 2);
 
 				gc.saveCtx(dl);
-				this.the_map.applyStyle(styleobj, styleflags, '<unknown layer>', dl);
+				this.the_map.applyStyle(styleobj, styleflags, dl);
 
 				//gc.drawCircle(this.start_map[0], this.start_map[1], this.measvalterrain, 
 					//true, true, false, styleobj, 'transient');

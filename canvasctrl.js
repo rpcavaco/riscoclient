@@ -5,6 +5,103 @@ function canvElName(p_layername) {
 	return "_dl" + p_layername;
 }
 
+function positioningShifted(p_positioning, p_x, p_y, p_dims, out_xylist) {
+	out_xylist.length = 2;
+	switch(p_positioning) {
+		case 'cc':
+			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
+			out_xylist[1] = p_y + Math.round(p_dims[1]/2.0);
+			break;
+		case 'cb':
+			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
+			out_xylist[1] = p_y - p_dims[1];
+			break;
+		case 'ct':
+			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
+			out_xylist[1] = p_y + p_dims[1];
+			break;
+		case 'lc':
+			out_xylist[0] = p_x;
+			out_xylist[1] = p_py - Math.round(p_dims[1]/2.0);
+			break;
+		case 'lb':
+			out_xylist[0] = p_x;
+			out_xylist[1] = p_y - p_dims[1];
+			break;
+		case 'rc':
+			out_xylist[0] = p_x + p_dims[0];
+			out_xylist[1] = p_y - Math.round(p_dims[1]/2.0);
+			break;
+		case 'rb':
+			out_xylist[0] = p_x + p_dims[0];
+			out_xylist[1] = p_y - p_dims[1];
+			break;
+		case 'rt':
+			out_xylist[0] = p_x + p_dims[0];
+			out_xylist[1] = p_y + p_dims[1];
+			break;
+		default: // lt
+			out_xylist[0] = p_x;
+			out_xylist[1] = p_y;
+	}
+}
+
+function setImageFrame(p_scrscalingfactor, p_width, p_height, b_sizefromimage, opt_forcemindim, out_dims) {
+	var dimdefined, ctxw, ctxh, h, w;
+	out_dims.length = 2;
+	
+	if (p_width < 1 || p_height < 1) {
+		throw new Error("setImageFrame: zero image width or height");
+	}
+		
+	// If width and height are not actually loaded image dims,
+	//  they might need scaling
+	if (!b_sizefromimage) {
+		ctxw = p_width * p_scrscalingfactor;
+		ctxh = p_height * p_scrscalingfactor;
+	} else {
+		ctxw = p_width;
+		ctxh = p_height;
+	}
+
+	dimdefined=false;
+	if (opt_forcemindim) {
+		if (ctxw > ctxh) {
+			if (ctxh >  opt_forcemindim) {
+				h = opt_forcemindim;
+				w = h * (ctxw /ctxh);
+				dimdefined = true;
+			}
+		} else {
+			if (ctxw >  opt_forcemindim) {
+				w = opt_forcemindim;
+				h = w * (ctxw /ctxh);
+				dimdefined = true;
+			}
+		}
+	}
+	if (!dimdefined) {
+		h = ctxh;
+		w = ctxw;
+	}
+	out_dims[0] = w;
+	out_dims[1] = h;
+}
+
+function canvasAddSingleImage(p_canvas, p_fname, p_x, p_y, b_is_inscreenspace,  
+			opt_positioning, opt_width, opt_height, opt_forcemindim, 
+			opt_imgfilter_func, opt_displaylayer) {
+	
+	let base_image = new Image();
+	base_image.src = p_fname;
+	
+	p_canvas.drawImage(base_image, p_x, p_y, 
+			b_is_inscreenspace, opt_positioning, opt_width, opt_height, 
+			opt_forcemindim, opt_imgfilter_func, opt_displaylayer);
+
+	return base_image;
+}
+
 function ctxGenericApplyStyle(p_canvasctx, p_styleobj, p_patterns, out_styleflags) {
 	
 	let foundattrs = [];
@@ -628,19 +725,19 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		ctx.restore();
 	};	
 	
-	this.applyStyle = function(p_styleobj, p_patterns, out_styleflags, p_layername, opt_displaylayer)
+	this.applyStyle = function(p_styleobj, p_patterns, out_styleflags, opt_displaylayer)
 	{
 		out_styleflags.stroke = false;
 		out_styleflags.fill = false;
 		var foundattrs = [];
 
 		if (typeof p_styleobj == 'undefined') {
-			throw new Error("applyStyle layer '"+p_layername+"' "+this.msg("NOSTYOBJ"));
+			throw new Error("applyStyle "+this.msg("NOSTYOBJ"));
 		}
 		
 		let ctx = this.getCtx(opt_displaylayer);
 		if (ctx == null) {
-			throw new Error("applyStyle layer '"+p_layername+"': no active graphic controller ccontext");
+			throw new Error("applyStyle: no active graphic controller ccontext");
 		}
 
 		// apply generic canvas symbology attributes
@@ -669,7 +766,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 		}
 		if (out_styleflags.stroke === undefined ||  out_styleflags.fill === undefined || (!out_styleflags.stroke && !out_styleflags.fill)) {
-			throw new Error("applyStyle layer '"+p_layername+"' "+this.msg("NOTHDRAW"));
+			throw new Error("applyStyle "+this.msg("NOTHDRAW"));
 		}
 	};
 		
@@ -723,7 +820,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt);
 			}
 
-			p_markerfunc(this._ctxdict[dlayer], pt, this._mapcontroller, p_featattrs);
+			p_markerfunc(this, pt, this._mapcontroller, p_featattrs, opt_displaylayer);
 			
 		} else {
 		
@@ -1150,7 +1247,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			if (is_inscreenspace) {
 				rad = p_radius;
 				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
-				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
+				this._mapcontroller.getScrDiffPt(p_cx, p_cy, pt);
 			} else {
 				rad = this._mapcontroller.m * p_radius;
 				this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt);
@@ -1215,38 +1312,24 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 	};
 	
-	this.drawImage = function(p_imageobj, p_terrx, p_terry, 
-			p_width, p_height, opt_displaylayer) {
-
-		var dlayer;
-		if (opt_displaylayer) {
-			dlayer = opt_displaylayer;
-		} else {
-			dlayer = "raster"
-		}
-		
-		var pt = [];
-		
-		var is_inscreenspace = false;
-		
-		if (is_inscreenspace) {
-			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_terrx, p_terry, pt);
-			this._mapcontroller.getScrDiffPt(p_terrx, p_terry, pt);
-		} else {
-			this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
-		}
-			
-		//this._mapcontroller.getScreenPtFromTerrain(p_terrx, p_terry, pt);
-		
-		var ctxw = p_width * this._mapcontroller.getScreenScalingFactor();
-		var ctxh = p_height * this._mapcontroller.getScreenScalingFactor();
-
-		//if (tmpx) {
-			//console.log("drawImage "+p_terrx+", "+p_terry+"->"+pt[0]+","+pt[1]+" szs:"+p_width+", "+p_height+"  szs2:"+ctxw+", "+ctxh+" img:"+iname+" layer:"+dlayer);
-		//}
-				
+	this.toGrayScale = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh) {
 		try {
-			this._ctxdict[dlayer].drawImage(p_imageobj, pt[0], pt[1], ctxw, ctxh);		
+			var imageData = p_ctx.getImageData(p_x, p_y, p_ctxw, p_ctxh);
+			var data = imageData.data;
+
+			for(var i = 0; i < data.length; i += 4) {
+			  var brightness = 0.34 * data[i] + 0.5 * data[i + 1] + 0.16 * data[i + 2];
+			  // red
+			  data[i] = brightness;
+			  // green
+			  data[i + 1] = brightness;
+			  // blue
+			  data[i + 2] = brightness;
+			}
+
+			// overwrite original image
+			p_ctx.putImageData(imageData, p_x, p_y);    			
+			
 		} catch(e) {
 			var accepted = false
 			if (e.name !== undefined) {
@@ -1261,6 +1344,65 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 				
 		}
+	};
+	
+	this.drawImage = function(p_imageobj, p_x, p_y, 
+			b_is_inscreenspace, opt_positioning, opt_width, opt_height, 
+			opt_forcemindim, opt_imgfilter_func, opt_displaylayer) {
+				
+		var pos, dlayer, dimdefined, pt = [], outxy=[], dims=[];
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = "raster";
+		}
+
+		if (opt_positioning && opt_positioning.length == 2) {
+			pos = opt_positioning.toLowerCase();
+		} else {
+			pos = 'cc';
+		}
+			
+		if (b_is_inscreenspace) {
+			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, pt);
+			this._mapcontroller.getScrDiffPt(p_x, p_y, pt);
+		} else {
+			this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, pt);
+		}
+
+		if (p_imageobj.complete) {
+			if (opt_width!=null && opt_height!=null) {
+				setImageFrame(this._mapcontroller.getScreenScalingFactor(), 
+					opt_width, opt_height, false, opt_forcemindim, dims);
+			} else {
+				setImageFrame(this._mapcontroller.getScreenScalingFactor(), 
+					p_imageobj.width, p_imageobj.height, true, opt_forcemindim, dims);
+			}
+			positioningShifted(pos, pt[0], pt[1], dims, outxy);
+			this._ctxdict[dlayer].drawImage(p_imageobj, outxy[0], outxy[1],  dims[0], dims[1]);
+			if (opt_imgfilter_func) {
+				opt_imgfilter_func(this._ctxdict[dlayer], p_imageobj, outxy[0], outxy[1], dims[0], dims[1]);
+			}
+		} else {
+			(function(p_pctx, p_sclfactor, p_img, p_pos, p_px, p_py, p_optw, p_opth, p_opt_imgfilter_func) {
+				p_img.onload = function() {
+					if (p_optw!=null && p_opth!=null) {
+						setImageFrame(p_sclfactor, 
+							p_optw, p_opth, false, opt_forcemindim, dims);
+					} else {
+						setImageFrame(p_sclfactor, 
+							p_imageobj.width, p_imageobj.height, true, opt_forcemindim, dims);
+					}
+					positioningShifted(p_pos, p_px, p_py, dims, outxy);
+					p_pctx.drawImage(p_img, outxy[0], outxy[1],  dims[0], dims[1]);
+					if (p_opt_imgfilter_func) {
+						p_opt_imgfilter_func(p_pctx, p_img, outxy[0], outxy[1],  dims[0], dims[1]);
+					}
+				}
+			})(this._ctxdict[dlayer],  this._mapcontroller.getScreenScalingFactor(),
+					p_imageobj, pos, pt[0], pt[1], opt_width, opt_height, opt_imgfilter_func);
+		}
+		
 	};
 	
 	this.setMarkVertexFunc = function(p_func) {
