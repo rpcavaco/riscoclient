@@ -132,6 +132,9 @@ function ctxGenericApplyStyle(p_canvasctx, p_styleobj, p_patterns, out_styleflag
 			case "linewidth":
 				p_canvasctx.lineWidth = p_styleobj[k_attr];
 				break;
+			case "linedash":
+				p_canvasctx.setLineDash(p_styleobj[k_attr]);
+				break;
 			case "linejoin":
 				p_canvasctx.lineJoin = p_styleobj[k_attr];
 				break;
@@ -165,6 +168,9 @@ function ctxGenericApplyStyle(p_canvasctx, p_styleobj, p_patterns, out_styleflag
 	// valores default
 	if (foundattrs.indexOf("linewidth") < 0) {
 		p_canvasctx.lineWidth = 1;
+	}
+	if (foundattrs.indexOf("linedash") < 0) {
+		p_canvasctx.setLineDash([]);
 	}
 	if (foundattrs.indexOf("linejoin") < 0) {
 		p_canvasctx.lineJoin = "round";
@@ -448,6 +454,15 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 		return this._ctxdict[dlayer].lineWidth;
 	};	
+	this.getLineDash = function(opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		return this._ctxdict[dlayer].getLineDash;
+	};		
 	this.getFont = function(opt_displaylayer) {
 		var dlayer;
 		if (opt_displaylayer) {
@@ -502,6 +517,15 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			dlayer = this.activeDisplayLayer;
 		}
 		this._ctxdict[dlayer].lineWidth = p_val;
+	};
+	this.setLineDash = function(p_arrval, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].setLineDash(p_arrval);
 	};
 	this.setLineJoin = function(p_val, opt_displaylayer) {
 		var dlayer;
@@ -560,8 +584,18 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		} else {
 			dlayer = this.activeDisplayLayer;
 		}
-		return parseInt(this._ctxdict[dlayer].font);
+		return parseInt(this._ctxdict[dlayer].font.replace(/([\d]+)[^\d]+/, "$1"));
 	};
+	this.setFontSize = function(p_sz, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}		
+		this._ctxdict[dlayer].font = this._ctxdict[dlayer].font.replace(/[\d]+([^\d]+)/, String.format("{0}$1",p_sz));
+		return(this._ctxdict[dlayer].font);
+	}
 
 	this.setShadowColor = function(p_style, opt_displaylayer) {
 		var dlayer;
@@ -655,8 +689,10 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		return this._ctxdict[dlayer].measureText(p_txt).width;	
 	};
 
-	this.plainText = function (p_txt, p_pt, opt_displaylayer, opt_p_chheight, 
-					opt_p_chhwid, opt_p_isfirst, opt_p_islast) 
+
+//	this.plainText = function (p_txt, p_pt, opt_displaylayer, opt_p_chheight, 
+//					opt_p_chhwid, opt_p_isfirst, opt_p_islast) 
+	this.plainText = function (p_txt, p_pt, opt_displaylayer, opt_p_bgwid, opt_p_bgheight) 
 	{
 		var dlayer, ctx;
 		if (opt_displaylayer) {
@@ -670,17 +706,15 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		{
 			ctx.save();
 			ctx.fillStyle = this.getLabelBackground();
-			if (opt_p_isfirst) {
-				ctx.fillRect(-opt_p_chhwid-4, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
-			} else if (opt_p_islast) {
-				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), 4 + opt_p_chhwid*2, opt_p_chheight);
-			} else {
-				ctx.fillRect(-opt_p_chhwid, -(opt_p_chheight/2.0), opt_p_chhwid*2, opt_p_chheight);
+			
+			if (opt_p_bgwid!=null && opt_p_bgheight!=null) {
+				ctx.fillRect(p_pt[0]-2, p_pt[1]-opt_p_bgheight+2, opt_p_bgwid+2, opt_p_bgheight+1);
 			}
+			
 			ctx.restore();
 		}
 
-		ctx.fillText(p_txt, p_pt[0], p_pt[1]);
+		ctx.fillText(p_txt.toString(), p_pt[0], p_pt[1]);
 	};	
 	
 	this.rotatedText = function (p_txt, p_pt, p_angle, p_fillstroke, opt_displaylayer, 
@@ -783,7 +817,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 											
 	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
 					p_markerfunc, is_inscreenspace, opt_displaylayer, 
-					dolog, p_featattrs) 
+					dolog, p_featattrs, p_layername) 
 	{
 		let dlayer, retgtype = "NONE";
 		if (opt_displaylayer) {
@@ -811,6 +845,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 
 		var prevmidpt=[0,0], midpt=[0,0], prevpt=[0,0], pt=[];
 
+		
+		/*var lst = this._mapcontroller.transformsQueue.getLastStored();
+		var trans = this._mapcontroller.transformsQueue.transientTransform;
+		console.log([p_layername, (lst!=null), trans.hasChanged()]);*/
+
 		if (retgtype == "POINT" && p_markerfunc != null) {
 
 			if (is_inscreenspace) {
@@ -825,6 +864,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		} else {
 		
 			this._ctxdict[dlayer].beginPath();
+
 
 			for (var cpi=0; cpi<p_points.length; cpi+=2) 
 			{
@@ -1076,8 +1116,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		pt.length = 2;
 
 		if (is_inscreenspace) {
-			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_cx, p_cy, pt);
-			this._mapcontroller.getScrDiffPt(p_cx, p_cy, pt);
+			pt[0] = p_cx;
+			pt[1] = p_cy; 
 		} else {
 			this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt);
 		}
@@ -1108,8 +1148,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
-				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
+				cpt[0] = p_x;
+				cpt[1] = p_y; 
 			} else {
 				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
@@ -1143,7 +1183,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			p_size, is_inscreenspace,
 			opt_displaylayer) 
 	{
-		var dlayer, pt=[];
+		var dlayer, pt=[], cpt=[];
 		if (opt_displaylayer) {
 			dlayer = opt_displaylayer;
 		} else {
@@ -1151,13 +1191,14 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 
 		pt.length = 2;
+		cpt.length = 2;
 		var sz = p_size;
 		
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
-				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
+				cpt[0] = p_x;
+				cpt[1] = p_y; 
 			} else {
 				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
@@ -1203,8 +1244,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		if (p_x!=null && p_y!=null) 
 		{
 			if (is_inscreenspace) {
-				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
-				this._mapcontroller.getScrDiffPt(p_x, p_y, cpt);
+				cpt[0] = p_x;
+				cpt[1] = p_y; 
 			} else {
 				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
@@ -1246,8 +1287,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		{
 			if (is_inscreenspace) {
 				rad = p_radius;
-				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, cpt);
-				this._mapcontroller.getScrDiffPt(p_cx, p_cy, pt);
+				pt[0] = p_cx;
+				pt[1] = p_cy; 
 			} else {
 				rad = this._mapcontroller.m * p_radius;
 				this._mapcontroller.getScreenPtFromTerrain(p_cx, p_cy, pt);
@@ -1312,7 +1353,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 	};
 	
-	this.toGrayScale = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh) {
+	this.toGrayScaleImgFilter = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh) {
 		try {
 			var imageData = p_ctx.getImageData(p_x, p_y, p_ctxw, p_ctxh);
 			var data = imageData.data;
@@ -1364,8 +1405,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 			
 		if (b_is_inscreenspace) {
-			//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_x, p_y, pt);
-			this._mapcontroller.getScrDiffPt(p_x, p_y, pt);
+			pt[0] = p_x;
+			pt[1] = p_y; 
 		} else {
 			this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, pt);
 		}

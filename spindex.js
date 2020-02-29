@@ -425,6 +425,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 	{
 		var col = Math.floor(p_scr_pt[0] / this.step);
 		var row = Math.floor(p_scr_pt[1] / this.step);
+		var ret;
 		
 		var cell_radius = Math.ceil(p_pix_radius / this.step);	
 		//console.log("p_pix_radius:"+p_pix_radius+", cell_radius:"+cell_radius+", step:"+this.step);
@@ -432,7 +433,7 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 		var check_items=[], found_oid=null, found_dist=null;
 		
 		if (this.added_points_count + this.added_lines_count + this.added_polys_count == 0) {
-			return found_oid;
+			return [];
 		}
 
 		var checkobj = {
@@ -526,8 +527,13 @@ function SpatialIndexer(p_mapcontroller, p_step) {
 			}
 		}
 		
+		if (checkobj.found_oid !== null) {
+			ret = [checkobj.found_oid, checkobj.found_dist];
+		} else {
+			ret = [];
+		}
 
-		return checkobj.found_oid;
+		return ret;
 	};
 	
 }

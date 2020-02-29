@@ -1797,7 +1797,7 @@ function GraphicControllerMgr(p_mapctrler, p_elemid) {
 	this.create(p_mapctrler, p_elemid, "main");
 }
 
-function MapAffineTransformation() {
+function MapAffineTransformation(opt_name) {
 	
 	this.scaling = [];
 	m3.identity(this.scaling);
@@ -1808,7 +1808,11 @@ function MapAffineTransformation() {
 	this._scaleval = null;
 	this._rotval = null;
 	this._transval = [];
-	this.changed_flag = false;
+	this._name = opt_name;
+
+	this.setName = function(p_name) {
+		this._name = p_name;
+	};
 	
 	this.getMatrix = function(out_m) {
 		m3.multiply(this.scaling, this.rotating, out_m);
@@ -1831,7 +1835,6 @@ function MapAffineTransformation() {
 		}
 		m3.scaling(p_scalingf, -p_scalingf, this.scaling);
 		this._scaleval = p_scalingf;
-		this.changed_flag = true;
 		return true;
 	};
 	this.setTranslating = function(p_tx, p_ty) {
@@ -1842,7 +1845,6 @@ function MapAffineTransformation() {
 		}
 		m3.translation(p_tx, p_ty, this.translating);
 		this._transval = [p_tx, p_ty];
-		this.changed_flag = true;
 		return true;
 	};
 	this.setRotating = function(p_deg) {
@@ -1851,14 +1853,7 @@ function MapAffineTransformation() {
 		}
 		m3.rotation(geom.rad2Deg(p_deg), this.rotating);
 		this._rotval = p_deg;
-		this.changed_flag = true;
 		return true;
-	};
-	this.hasChanged = function() {
-		return this.changed_flag;
-	};
-	this.resetChangedFlag = function() {
-		this.changed_flag = false;
 	};
 	this.getScaleVal = function() {
 		return this._scaleval;
