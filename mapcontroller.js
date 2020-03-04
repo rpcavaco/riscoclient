@@ -144,9 +144,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.showWarn = p_func;
 	};
 	
-	this.scale = 1;
-	this.cx = null;
-	this.cy = null;
 	this.lang = "pt";
 	this.i18n_text = null;
 	this.features = {};
@@ -237,9 +234,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	this.transformsQueue = {
 		_queue: [],
-		transientTransform: new MapAffineTransformation(),
+		currentTransform: new MapAffineTransformation(),
 		checkToStore: function() {
-				this._queue.push(clone(this.transientTransform));
+			this._queue.push(clone(this.currentTransform));
 			this._queue[this._queue.length-1].setName(String.format("trans n.º {0}", this._queue.length));
 		},
 		getLastStored: function() {
@@ -248,7 +245,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				ret = this._queue[this._queue.length-1];
 			}
 			return ret;
-		},
+		}
 	};
 	
 	this.style_visibility = null;
@@ -277,7 +274,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.getScrDiffPt = function(p_x, p_y, outpt) {
 		outpt.length = 2;
 		let mx1=[], mx2=[], v2=[], v3=[], tmx=[], v, lst = this.transformsQueue.getLastStored();
-		var trans = this.transformsQueue.transientTransform;
+		var trans = this.transformsQueue.currentTransform;
 		if (lst) {
 			// if current / transient trans has been changed
 			v = [p_x, p_y, 1];
@@ -318,10 +315,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	this.pubScaleVal = function(opt_scale) {
 		var scl;
+		var ctrans = this.transformsQueue.currentTransform;	
 		if (opt_scale) {
 			scl = opt_scale;
 		} else {
-			scl = this.getScale();
+			scl = ctrans.getCartoScaleVal(MapCtrlConst.MMPD);
 		}
 		for (var i=0; i<this.scalewidgetids.length; i++) {
 			var wid = document.getElementById(this.scalewidgetids[i]);
@@ -335,11 +333,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (p_scale === null) {
 			throw new Error(this.msg("INVSCL")+p_scale);
 		}
-		p1_scale = parseFloat(p_scale);
+		var vscale, p1_scale = parseFloat(p_scale);
 		if (p1_scale <= 0) {
 			throw new Error(this.msg("INVSCL")+p1_scale);
 		}
-		var vscale;
 		
 		// Arredondar
 		if (p1_scale < MapCtrlConst.MINSCALE) {
@@ -352,7 +349,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			vscale = parseInt(Math.round(vscale));
 		} else if (vscale < 500) {
 			vscale = parseInt(Math.round(vscale / 10.0)) * 10.0;
-		} else if (vscale < 1000) {
+		} else if (vscale < 2000) {
 			vscale = parseInt(Math.round(vscale / 10.0)) * 10.0;
 		} else if (vscale < 10000) {
 			vscale = parseInt(Math.round(vscale / 100.0)) * 100.0;
@@ -364,7 +361,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			vscale = parseInt(Math.round(vscale));
 		}
 		
-		this.scale = vscale;
+		var ctrans = this.transformsQueue.currentTransform;	
+		ctrans.setScaleFromCartoScale(vscale, MapCtrlConst.MMPD);
+		
 		if (this.scalewidgetids.length < 1) {
 			this.pendingpubscaleval = true;
 		} else {
@@ -373,11 +372,16 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 	};
 	this.getScale = function() {
-		return this.scale;
+		var ctrans = this.transformsQueue.currentTransform;	
+		if (ctrans) {
+			return ctrans.getCartoScaleVal(MapCtrlConst.MMPD);
+		} else {
+			throw new Error("getScale: no current map tranformation");
+		}
 	};
 	this.getScreenScalingFactor = function() {
-		var ttrans = this.transformsQueue.transientTransform;		
-		return ttrans.getScaleVal();
+		var ttrans = this.transformsQueue.currentTransform;		
+		return ttrans.getScaling();
 	};
 	this.getMaxZIndex = function() 
 	{
@@ -417,18 +421,39 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 	
 	this.calcPixSize = function() {
-		var ttrans = this.transformsQueue.transientTransform;		
-		return 1.0 / ttrans.getScaleVal();
+		var ttrans = this.transformsQueue.currentTransform;		
+		return 1.0 / ttrans.getScaling();
+	};
+	
+	this.calcInitTransformation = function(p_centerx, p_centery, p_scale) {
+		
+		//console.log(['calcInitTransformation', p_centerx, p_centery, p_scale]);
+		
+		var ctrans = this.transformsQueue.currentTransform;		
+		var k, hwidth, hheight, cdims = this.getGraphicController().getCanvasDims();
+	
+		if (this.spatialindexer != null) {
+			this.spatialindexer.resize();
+		}
+		
+		ctrans.setScaleFromCartoScale(p_scale, MapCtrlConst.MMPD);
+		this.setCenter(p_centerx, p_centery);
+		
+		/*
+		k = ctrans.getScaling();
+		console.log('calc init k:'+k);
+		hwidth = k * (cdims[0] / 2.0);
+		hheight = k * (cdims[1] / 2.0);
+		
+		ox = p_centerx - hwidth;
+		oy = p_centery - hheight;
+
+		ctrans.setTranslating(-ox, -(oy + cdims[1] / k));
+		* */
+		
+		
 	};
 
-/** Calculate and store map display transformation, between ground and screen units.
-  * Original center of transformation should have been provided previously from map configuration, through readConfig function. 
-  * Otherwise it will be undefined.
-  * @this MapController
-  * @param {boolean} [opt_forceprepdisp] - (optional) force display canvas initialization, is performed automatically at first invocation.
-  * @param {number} [opt_centerx] - (optional) force new x-coord center.
-  * @param {number} [opt_centery] - (optional) force new y-coord center.
-*/
 
 /** Calculate and store map display transformation, between ground and screen units.
   * Original center of transformation should have been provided previously from map configuration, through readConfig function. 
@@ -440,11 +465,15 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {number} [opt_centerx] - (optional) force new x-coord center.
   * @param {number} [opt_centery] - (optional) force new y-coord center.
 */
-	this.calcMapTransform = function(opt_env, opt_forceprepdisp, opt_centerx, opt_centery)
+	this.calcMapTransform = function(opt_env, opt_forceprepdisp)
 	{
-		var pt=[], hwidth, hheight, ox, oy;
+		var pt=[];
+		//var orig=[];
+		var scale, hwidth, hheight, cx, cy, cen=[];
 		var k, _inv = this.callSequence.calling("calcMapTransform", arguments);
-		var transientTransform = this.transformsQueue.transientTransform;
+		var currentTransform = this.transformsQueue.currentTransform;
+		
+		//console.log(['calcMapTransform', opt_env, opt_forceprepdisp]);
 
 		// Intializing and dimensioning canvas - canvas size will be used immediately ahead
 		this.getGraphicController().prepDisplay(opt_forceprepdisp);
@@ -460,79 +489,57 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			var new_env = new Envelope2D();
 			new_env.setFromOther(opt_env);
 			new_env.getCenter(pt);
-			this.cx = pt[0];
-			this.cy = pt[1];		
 			
-			if (isNaN(this.cx)) {
-				throw new Error("calcMapTransform: this.cx is NaN");
-			}
-			if (isNaN(this.cy)) {
-				throw new Error("calcMapTransform: this.cy is NaN");
-			}
+			cx = pt[0];
+			cy = pt[1];
+
+			this.setCenter(cx, cy);		
 
 			this.callSequence.addMsg("calcMapTransform", _inv, "center coords set from env");
 
 			if (new_env.getWHRatio() > whRatioCanvas) {
-				k = new_env.getWidth() / cdims[0];
+				k = cdims[0] / new_env.getWidth();
 			} else {
-				k = new_env.getHeight() / cdims[1];
+				k = cdims[1] / new_env.getHeight();
 			}	
-			this.scale = k / (MapCtrlConst.MMPD / 1000.0);	
+			scale = k / (MapCtrlConst.MMPD / 1000.0);	
 			
 			// Keep scale inside valid threshold
-			if (this.scale < MapCtrlConst.MINSCALE) {
-				this.scale = MapCtrlConst.MINSCALE;
-				k = this.scale * (MapCtrlConst.MMPD / 1000.0);
+			if (scale < MapCtrlConst.MINSCALE) {
+				scale = MapCtrlConst.MINSCALE;
+				k = scale * (MapCtrlConst.MMPD / 1000.0);
 			}
+
+			currentTransform.setScaling(k);
+
 			hwidth = k * (cdims[0] / 2.0);
 			hheight = k * (cdims[1] / 2.0);
 
 		} else {
 			
-			k = this.scale * (MapCtrlConst.MMPD / 1000.0);
+			k = currentTransform.getScaling();
 			hwidth = k * (cdims[0] / 2.0);
 			hheight = k * (cdims[1] / 2.0);
 
-			if (opt_centerx != null && opt_centery != null && this.prevhdims.length > 0)
-			{
-				var dx = opt_centerx - this.cx;
-				var dy = opt_centery - this.cy;
+			this.getCenter(cen);
 
-				this.cx -= (hwidth * ( dx / this.prevhdims[0])) - dx;
-				this.cy += dy -(hheight * ( dy / this.prevhdims[1]));
-
-				if (isNaN(this.cx)) {
-					console.warn([hwidth, this.prevhdims[0], dx]);
-					throw new Error("calcMapTransform: this.cx is NaN");
-				}
-				if (isNaN(this.cy)) {
-					throw new Error("calcMapTransform: this.cy is NaN");
-				}
-
-				this.callSequence.addMsg("calcMapTransform", _inv, "center coords set");
+			cx = cen[0];
+			cy = cen[1];
 			}
-		}
-		
-		ox = this.cx - hwidth;
-		oy = this.cy - hheight;
 		
 		this.prevhdims = [hwidth, hheight];
 
-		transientTransform.setTranslating(-ox, -(oy + cdims[1] * k));
-		transientTransform.setScaling(1.0 / k);
 		
 		this.callSequence.addMsg("calcMapTransform", _inv, "screen to terrain matrix is set");
 
-		this.env.setNullAround([this.cx, this.cy]);
-
-		this.getTerrainPt([0,0], pt)
+		this.getCenter(cen);
+		this.env.setNullAround(cen);
+		this.getTerrainPt([0,cdims[1]], pt)
 		this.env.addPoint(pt);
 		this.getTerrainPt([cdims[0],0], pt)
 		this.env.addPoint(pt);
-		this.getTerrainPt([cdims[0],cdims[1]], pt)
-		this.env.addPoint(pt);
-		this.getTerrainPt([0,cdims[1]], pt)
-		this.env.addPoint(pt);
+		
+		this.getTerrainPt([cdims[0]/2,cdims[1]/2], pt)
 
 		this.callSequence.addMsg("calcMapTransform", _inv, "envelope is set");
 		
@@ -549,7 +556,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {number} [opt_centerx] - (optional) force new x-coord center of map transformation.
   * @param {number} [opt_centery] - (optional) force new y-coord center of map transformation.
 */
-	this.refresh = function(opt_forceprepdisp, opt_centerx, opt_centery) {
+	this.refresh = function(opt_forceprepdisp) {
 		
 		this.callSequence.init("refresh");
 		this.onChangeStart("refresh");
@@ -557,23 +564,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		// clean perattribute object symbolization indexing
 		this.perattribute_indexing.reset();
 
-		this.calcMapTransform(null, opt_forceprepdisp, opt_centerx, opt_centery);
+		this.calcMapTransform(null, opt_forceprepdisp);
 		this.transformsQueue.checkToStore();
 
-								
 		this.prepareRefreshDraw();
 	};
 	
-/** @this MapController 
-  * Refresh map display by retrieving data form server
-  * @param {Envelope2D} p_env - coordinate envelope to be taken as new map extent
-  * @param {LayerFilter} [opt_filter] - (optional) if present, objects obeying filter criteria will be present, despite being or not inside envelope.
-*/	
-	this.refreshFromEnv = function(p_env, opt_filter) {
-		this.calcMapTransform(p_env);
-		this.prepareRefreshDraw(opt_filter);
-	};
-
 /** @this MapController 
   * Refresh map display by retrieving data form server
   * @param {number} p_minx - min x coordinate of envelope to be taken as new map extent
@@ -608,10 +604,10 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
   * @param {number} [opt_centerx] - (optional) force new x-coord center of map transformation.
   * @param {number} [opt_centery] - (optional) force new y-coord center of map transformation.
 */
-	this.redraw = function(opt_forceprepdisp, opt_centerx, opt_centery, opt_nottimed) {
+	this.redraw = function(opt_forceprepdisp, opt_nottimed) {
 		this.onChangeStart("redraw");
 		//console.log([opt_forceprepdisp, opt_centerx, opt_centery]);
-		this.calcMapTransform(null, opt_forceprepdisp, opt_centerx, opt_centery);
+		this.calcMapTransform(null, opt_forceprepdisp);
 		this._localDraw(opt_nottimed);
 	};
 
@@ -628,9 +624,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		let deltascrx =  p_x - p_start_screen[0];
 		let deltascry =  p_y - p_start_screen[1];
 
-		//console.log([ p_start_terrain[0],  p_start_terrain[1], deltax, deltay]);
+		//console.log([ p_start_terrain[0],  p_start_terrain[1], terrain_pt[0], terrain_pt[1],  deltax, deltay]);
 
-		if (Math.abs(deltascrx) > 1 || Math.abs(deltascry) > 1) {
+		if (Math.abs(deltascrx) > 0 || Math.abs(deltascry) > 0) {
 			//this.scrDiffFromLastSrvResponse.moveCenter(deltascrx, deltascry);
 			this.moveCenter(deltax, deltay);
 			this.redraw(true);
@@ -639,21 +635,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	// called by pan tool mouse up method - redraw only
-	this.finishPan = function(p_x, p_y, p_start_terrain, p_start_screen) {
-
-		let muidx=0, terrain_pt=[], ret = false;
-
-		this.getTerrainPt([p_x, p_y], terrain_pt);
+	this.finishPan = function(p_x, p_y, p_start_screen) {
 		
+		let muidx=0, ret = false;
 		let deltascrx =  Math.abs(p_start_screen[0] - p_x);
 		let deltascry =  Math.abs(p_start_screen[1] - p_y);
-		
-		let deltax =  p_start_terrain[0] - terrain_pt[0];
-		let deltay =  p_start_terrain[1] - terrain_pt[1];	
-		
 		if (deltascrx > 0 || deltascry > 0) {	
 					
-			this.moveCenter(deltax, deltay);
 			this.refresh(false);	
 			
 			if (this.onPanZoom[muidx] !== undefined && this.onPanZoom[muidx] != null) {
@@ -669,14 +657,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	
 	// called by mousewheel scaling - redraw only
 	this.quickChangeScale = function(p_scale, p_pagerefx, p_pagerefy) {
-
-		var terrain_pt = [];
-		
-		this.getTerrainPt([p_pagerefx, p_pagerefy], terrain_pt);		
-		
-		//this.updateM_scrDiffFromLastSrvResponse();
-		//this.scrDiffFromLastSrvResponse.scaleFromCenter(p_pagerefx, p_pagerefy);
-		this._changeScale(p_scale, true, terrain_pt[0], terrain_pt[1]);
+		this._changeScale(p_scale, true, p_pagerefx, p_pagerefy);
 		
 	}
 
@@ -688,26 +669,44 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	// apenas para uso interno
 	this._changeScale = function(p_scale, p_redrawonly, opt_centerx, opt_centery) {
 		
-		if (this.maxscaleview) {
-			if (p_scale > this.maxscaleview.scale) {
-				this.scale = this.maxscaleview.scale;
-				this.cx = this.maxscaleview.terrain_center[0];
-				this.cy = this.maxscaleview.terrain_center[1];
-				
-				if (p_redrawonly) {
-					this.redraw(false, opt_centerx, opt_centery, false);
-				} else {
-					this.refresh(false, opt_centerx, opt_centery);
-				}
-				return;
-			}
+		var changed = false;
+		var cen=[], terrain_refpt_from = [];
+		var newx, newy, terrain_refpt_to = [];
+
+		// If opt_centerx and opt_centery were given, lets get terrain coords for
+		//  that point
+		if (opt_centerx) {
+			this.getTerrainPt([opt_centerx, opt_centery], terrain_refpt_from);
 		}
 		
-		this.setScale(p_scale);
+		if (this.maxscaleview) {
+			if (p_scale > this.maxscaleview.scale) {
+				this.setScale(this.maxscaleview.scale);	
+				changed = true;			
+			}
+		}
+				
+		if (!changed) {
+			this.setScale(p_scale);
+			}
+
+		// If opt_centerx and opt_centery were given, lets get new terrain 
+		//  coords for same scrren location, apply coord difference
+		//  to a map center shift, so that location keeps same postion
+		//  in screen
+		if (opt_centerx) {
+			this.getTerrainPt([opt_centerx, opt_centery], terrain_refpt_to);		
+			this.getCenter(cen);		
+			newx = cen[0] + terrain_refpt_from[0] - terrain_refpt_to[0];
+			newy = cen[1] + terrain_refpt_from[1] - terrain_refpt_to[1];	
+			
+			this.setCenter(newx, newy);
+		}
+		
 		if (p_redrawonly) {
-			this.redraw(false, opt_centerx, opt_centery, false);
+			this.redraw(false, true);
 		} else {
-			this.refresh(false, opt_centerx, opt_centery);
+			this.refresh(false);
 		}
 	};
 	this.changeCenter = function(p_centerx, p_centery)
@@ -719,17 +718,59 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			throw new Error("p_centery is NaN");
 		}
 
-		if (p_centerx != null) {
-			this.cx = p_centerx;
+		if (p_centerx == null) {
+			throw new Error("p_centerx is null");
 		}
-		if (p_centery != null) {
-			this.cy = p_centery;
+		if (p_centery == null) {
+			throw new Error("p_centery is null");
 		}
+
+		this.setCenter(p_centerx, p_centery);
+		
 		this.refresh(false);
 	};
+	this.setCenter = function(p_cx, p_cy) {
+	
+		var ox, oy, ctrans = this.transformsQueue.currentTransform;		
+		var k, hwidth, hheight, fheight, cdims = this.getGraphicController().getCanvasDims();
+	
+		k = ctrans.getScaling();
+
+		hwidth = (cdims[0] / 2.0) / k;
+		fheight = cdims[1] / k;
+		hheight = fheight / 2.0;
+		
+		/*console.log(['814 -- ', k, cdims[0], hwidth, p_cx]);
+		console.log(['815 -- ', k, cdims[1], hheight, p_cy]); */
+		
+		ox = p_cx - hwidth;
+		oy = p_cy - hheight;
+
+		//console.log([ox, oy]);
+
+		ctrans.setTranslating(-ox, -(oy + fheight));
+		//ctrans.setTranslating(-ox, -oy);
+	};
+	this.getCenter = function(out_center) {
+		
+		var out_translate = [];
+		var ctrans = this.transformsQueue.currentTransform;
+		var k, hwidth, hheight, fheight, cdims = this.getGraphicController().getCanvasDims();
+		
+		ctrans.getTranslate(out_translate);
+	
+		k = ctrans.getScaling();
+		hwidth = (cdims[0] / 2.0) / k;
+		fheight = cdims[1] / k;
+		hheight = fheight / 2.0;
+
+		out_center.length = 2;
+		out_center[0] = -out_translate[0] + hwidth;
+		out_center[1] = -out_translate[1] - fheight  + hheight;
+	};	
 	this.moveCenter = function(p_deltax, p_deltay)
 	{
-		//console.log("mapctrl moveCenter dx:"+p_deltax+' dy:'+p_deltay+", cx:"+this.cx+' cy:'+this.cy);
+		var ctrans = this.transformsQueue.currentTransform;		
 
 		if (isNaN(p_deltax)) {
 			throw new Error("moveCenter: p_deltax is NaN");
@@ -737,21 +778,14 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (isNaN(p_deltay)) {
 			throw new Error("moveCenter: p_deltay is NaN");
 		}
-		
-		if (p_deltax != null) {
-			this.cx = parseFloat(this.cx) + parseFloat(p_deltax);
+		if (p_deltax == null) {
+			throw new Error("moveCenter: p_deltax is null");
 		}
-
-		if (p_deltay != null) {
-			this.cy = parseFloat(this.cy) + parseFloat(p_deltay);
+		if (p_deltay == null) {
+			throw new Error("moveCenter: p_deltay is null");
 		}
 		
-		if (isNaN(this.cx)) {
-			throw new Error("moveCenter: new this.cx is NaN");
-		}
-		if (isNaN(this.cy)) {
-			throw new Error("moveCenter: new this.cy is NaN");
-		}
+		ctrans.translate(-p_deltax, -p_deltay);
 	};
 	
 	this.setZoomTMSLevel = function(p_zoomlvl, opt_cx, opt_cy) {
@@ -761,8 +795,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		if (opt_cx!=null && opt_cy!=null) {
 			this.refreshFromScaleAndCenter(sv, opt_cx, opt_cy);
-		} else {
-			this.changeCenter(p_centerx, p_centery);
 		}
 	};
 	
@@ -792,7 +824,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		
 		var v1=[], v2=[], mx1=[];
-		var trans = this.transformsQueue.transientTransform;
+		var trans = this.transformsQueue.currentTransform;
 
 		out_pt.length = 2;
 		v1 = [parseFloat(p_terrpt_x), parseFloat(p_terrpt_y), 1];
@@ -835,7 +867,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		
 		var v1=[], v2=[], mx1=[];
-		var trans = this.transformsQueue.transientTransform;
+		var trans = this.transformsQueue.currentTransform;
 
 		out_pt.length = 2;
 		v1 = [parseFloat(p_scrpt[0]), parseFloat(p_scrpt[1]), 1];
@@ -849,7 +881,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 	this.readConfig = function(p_initconfig) {
 		
-
 		var scalev, tobj, tobj1, baseurl, lblscllims=[];
 
 		if (p_initconfig.servertype === undefined || p_initconfig.servertype == "active") {
@@ -898,9 +929,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				throw new Error(this.msg("ERRCEN1")+ ":" + tobj[1]);
 			}
 
-			this.cx = parseFloat(tobj[0]);
-			this.cy = parseFloat(tobj[1]);
-			
+			this.calcInitTransformation(parseFloat(tobj[0]), parseFloat(tobj[1]), scalev);
 		} else {	
 			throw new Error(this.msg("NOCEN"));			
 		}
@@ -1249,7 +1278,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	this.getStatsURL = function(opt_filter) 
 	{
-		var ret, sep, formatstr;
+		var ret, sep, formatstr, center=[];
 		if (this.baseurl.endsWith("/")) {
 			sep = "";
 		} else {
@@ -1257,12 +1286,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		// TODO: verificar número de casas decimais
 		
-		if (isNaN(this.cx)) {
-			throw new Error("getStatsURL - cx is NaN:" + this.cx);
-		}
-		if (isNaN(this.cy)) {
-			throw new Error("getStatsURL - cy is NaN");
-		}
+		this.getCenter(center);
+		
 		if (isNaN(this.expandedEnv.getWidth())) {
 			throw new Error("getStatsURL - env.getWidth() is NaN");
 		}
@@ -1275,8 +1300,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		if (vizlyrs.length > 0) {
 			formatstr = "{0}{1}stats?map={2}&cenx={3}&ceny={4}&wid={5}&hei={6}&pixsz={7}&vizlrs={8}";
-			ret = String.format(formatstr, this.baseurl, sep, this.mapname, formatFracDigits(this.cx, 2),
-					formatFracDigits(this.cy,2), formatFracDigits(this.expandedEnv.getWidth(),2),
+			ret = String.format(formatstr, this.baseurl, sep, this.mapname, formatFracDigits(center[0], 2),
+					formatFracDigits(center[1],2), formatFracDigits(this.expandedEnv.getWidth(),2),
 					formatFracDigits(this.expandedEnv.getHeight(),2), formatFracDigits(this.calcPixSize(),6),
 					vizlyrs.join(','));			
 
@@ -1305,7 +1330,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		}
 		
 		return ret;
-	}
+	};
 
 	this.getFeaturesURL = function(p_reqid, p_lname, opt_filter) {
 
@@ -4097,14 +4122,14 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		var tol = this.mapctrlsmgr.getTolerance(this.getScale());
 		
-		var ttrans = this.transformsQueue.transientTransform;		
+		var ttrans = this.transformsQueue.currentTransform;		
 		var pix_radius;
 		
 		if(('ontouchstart' in window) || (navigator.MaxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0)) {
-			pix_radius = Math.ceil(2.0 * ttrans.getScaleVal() * tol); 
+			pix_radius = Math.ceil(2.0 * ttrans.getScaling() * tol); 
 			//console.log("triple radius:"+pix_radius);
 		}else {
-			pix_radius = Math.ceil(ttrans.getScaleVal() * tol);
+			pix_radius = Math.ceil(ttrans.getScaling() * tol);
 			//console.log("single radius:"+pix_radius);
 		}
 
@@ -4356,18 +4381,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			})(this.mapctrlsmgr)		
 	);
 
-	/* //THROTTLED EVENTS CANCELADOS
-	throttleMouseEvent("mousemove", "optimizedMousemove");
-	
-	window.addEventListener("optimizedMousemove", 
-		(function (p_mapctrlsmgr) {
-			return function(e) {
-				p_mapctrlsmgr.mousemove(e);
-			}
-		})(this.mapctrlsmgr)
-	);
-	* */ 
-
 	window.addEventListener("mousemove", 
 		(function (p_mapctrlsmgr) {
 			return function(e) {
@@ -4427,7 +4440,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					var te = p_mapctrlsmgr.touchController.touchend(e);
 					//console.log('touchend');
 					if (te) {
-						p_mapctrlsmgr.mouseup(te);
+						//console.log('touch end mouseup');
+						p_mapctrlsmgr.mouseup(te, p_mapctrlsmgr.touchController.zoomcenter);
 					}
 				}
 			})(this.mapctrlsmgr)					

@@ -360,6 +360,14 @@ function Envelope2D() {
 		if (p_center === null || typeof p_center != 'object' || p_center.length != 2) 
 			throw new Error(this.msg("INVALIDPT"));
 
+		if (isNaN(p_center[0])) {
+			throw new Error("setNullAround: cy is NaN");
+		}
+
+		if (isNaN(p_center[1])) {
+			throw new Error("setNullAround: cy is NaN");
+		}
+
 		this.minx = p_center[0];
 		this.miny = p_center[1];
 		this.maxx = p_center[0];
@@ -391,6 +399,12 @@ function Envelope2D() {
 		out_pt[1] = this.miny + (h / 2.0);		
 	};
 	
+	this.getOrigin = function(out_pt) 
+	{
+		out_pt[0] = this.minx;
+		out_pt[1] = this.miny;		
+	};
+	
 	this.expand = function(p_mult) 
 	{		
 		var w = this.maxx - this.minx;
@@ -408,8 +422,16 @@ function Envelope2D() {
 	};
 	
 	this.toString = function() {
-		var fmt = "minx:{0} miny:{1} maxx:{2} maxy:{3}";
-		return String.format(fmt, formatFracDigits(this.minx,2), formatFracDigits(this.miny,2), formatFracDigits(this.maxx,2), formatFracDigits(this.maxy,2));
+		var fmt = "minx:{0} miny:{1} maxx:{2} maxy:{3} w:{4} h:{5}";
+		var w = this.maxx - this.minx;
+		var h = this.maxy - this.miny;
+		return String.format(fmt, 
+					formatFracDigits(this.minx,2), 
+					formatFracDigits(this.miny,2), 
+					formatFracDigits(this.maxx,2), 
+					formatFracDigits(this.maxy,2),
+					w, h
+				);
 	};	
 	
 	this.getWidth = function() {
@@ -1799,16 +1821,21 @@ function GraphicControllerMgr(p_mapctrler, p_elemid) {
 
 function MapAffineTransformation(opt_name) {
 	
+	/** 
+	 * Transformation from ground length into screen dots.
+	 * Screen to terrain achieved aplying inverse matrix.
+	 */
+	
 	this.scaling = [];
 	m3.identity(this.scaling);
 	this.translating = [];
 	m3.identity(this.translating);
 	this.rotating = [];
 	m3.identity(this.rotating);
-	this._scaleval = null;
 	this._rotval = null;
 	this._transval = [];
 	this._name = opt_name;
+	this.trace = false;
 
 	this.setName = function(p_name) {
 		this._name = p_name;
@@ -1830,33 +1857,39 @@ function MapAffineTransformation(opt_name) {
 		m3.inverse(tmp, out_m);
 	};	
 	this.setScaling = function(p_scalingf) {
-		if (this._scaleval !== null  && Math.abs(this._scaleval - p_scalingf) < 0.000001) {
-			return false;
-		}
 		m3.scaling(p_scalingf, -p_scalingf, this.scaling);
-		this._scaleval = p_scalingf;
-		return true;
+		if (this.trace) {
+			console.log("setScaling "+p_scalingf+" 1:"+this.getCartoScaleVal(MapCtrlConst.MMPD));
+		}
 	};
 	this.setTranslating = function(p_tx, p_ty) {
-		if (this._transval.length > 0 && 
-				(Math.abs(this._transval[0] - p_tx) < 0.000001 && Math.abs(this._transval[1] - p_ty) < 0.000001) 
-			) {
-			return false;			
-		}
 		m3.translation(p_tx, p_ty, this.translating);
-		this._transval = [p_tx, p_ty];
-		return true;
+		if (this.trace) {
+			console.trace(['translating', p_tx, p_ty]);
+		}
+	};
+	this.translate = function(p_dx, p_dy) {
+		m3.twod_shift(this.translating, p_dx, p_dy);
+		if (this.trace) {
+			console.trace(['2dshift', p_dx, p_dy]);
+		}
+	};
+	this.getTranslate = function(out_res) {
+		out_res.length = 2;
+		out_res[0] = this.translating[6];
+		out_res[1] = this.translating[7];
 	};
 	this.setRotating = function(p_deg) {
-		if (this._rotval !== null  && Math.abs(this._rotval - p_deg) < 0.00001) {
-			return false;
-		}
 		m3.rotation(geom.rad2Deg(p_deg), this.rotating);
-		this._rotval = p_deg;
-		return true;
 	};
-	this.getScaleVal = function() {
-		return this._scaleval;
+	this.getScaling = function() {
+		return m3.getCartoScaling(this.scaling);
+	};
+	this.getCartoScaleVal = function(p_mmpd) {
+		return Math.round(1000.0 / (m3.getCartoScaling(this.scaling) * p_mmpd));
+	};
+	this.setScaleFromCartoScale = function(p_scaleval, p_mmpd) {		
+		this.setScaling(1000.0 / (p_scaleval * p_mmpd));
 	}
 }
 

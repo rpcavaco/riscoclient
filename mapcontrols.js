@@ -110,7 +110,7 @@ function Pan(mouseButtonMask, p_mapctrl)
 		{ 	
 			this.started = false;
 			
-			this.the_map.finishPan((x==0 ? this.last_pt[0] : x), (y==0 ? this.last_pt[1] : y), this.start_terrain, this.start_screen);		
+			this.the_map.finishPan((x==0 ? this.last_pt[0] : x), (y==0 ? this.last_pt[1] : y), this.start_screen);		
 			this.start_terrain = null;
 		}
 		
@@ -247,7 +247,6 @@ function mouseWheelController(p_controls_mgr) {
 	
 	this.controls_mgr = p_controls_mgr;
 	this.timerId = null;
-	this.location = [];
 	this.waitPeriodMsec = 400;
 	
 	this.clearReference = function() {
@@ -255,7 +254,6 @@ function mouseWheelController(p_controls_mgr) {
 			window.clearTimeout(this.timerId);
 			this.timerId = null;
 		}
-		//this.location.length = 0;
 	};
 	
 	this.mousewheel = function(e) 
@@ -331,9 +329,10 @@ function touchController(p_controls_mgr) {
 	
 	this.controls_mgr = p_controls_mgr;
 	this.timerId = null;
-	this.location = [];
+	this.zoomcenter = [];
 	this.waitPeriodMsec = 400;
 	this.initPinchDiagonal = null;
+	this.started = false;
 	
 	this.ongoingTouches = [];
 	
@@ -355,10 +354,12 @@ function touchController(p_controls_mgr) {
 	};
  
 	this.touchstart = function(e) {
+		
 		e.preventDefault();
 		let ret = null;
 		let touches = e.changedTouches;
 		let trg = getTarget(e);
+		this.zoomcenter.length = 0;
 		
 		for (let i = 0; i < touches.length; i++) {
 			this.ongoingTouches.push(copyTouch(touches[i], trg));
@@ -368,6 +369,10 @@ function touchController(p_controls_mgr) {
 		}
 		if (this.ongoingTouches.length == 2) {
 			this.initPinchDiagonal = null;
+		}
+
+		if (ret) {
+			this.started = true;
 		}
 
 		return ret;
@@ -409,9 +414,17 @@ function touchController(p_controls_mgr) {
 				this.ongoingTouches.splice(idx, 1);
 			}
 		}
-		if (touches.length == 1) {
+		
+		// When second touchend fires after two-finger pinching movement
+		// this.started == false already, so that ret value returns null 
+		// signaling the caller to do nothing
+		if (touches.length == 1 && this.started) {
 			ret = found;
+		} else {
+			this.initPinchDiagonal = null;
 		}
+
+		this.started = false;
 		return ret;
 	};
 
@@ -421,7 +434,7 @@ function touchController(p_controls_mgr) {
 		let coords=[], minx=999999, miny=999999;
 		let maxx=-999999, maxy=-999999, d, k, diff, maxdim;
 		
-		if (this.ongoingTouches.length != 2) {
+		if (this.ongoingTouches.length < 2) {
 			return;
 		};
 		
@@ -429,7 +442,7 @@ function touchController(p_controls_mgr) {
 		let cdims = this.controls_mgr.the_map.getGraphicController().getCanvasDims();
 		maxdim = Math.max(cdims[0], cdims[1]);
 		
-		for (let i=0; i < this.ongoingTouches.length; i++) {
+		for (let i=0; i < 2; i++) {
 			
 			t = this.ongoingTouches[i];
 			
@@ -440,9 +453,9 @@ function touchController(p_controls_mgr) {
 			maxx = Math.max(maxx, coords[0]);
 			maxy = Math.max(maxy, coords[1]);
 			}
-		dx = maxx - minx;
-		dy = maxy - miny;
-		d = Math.sqrt(dx * dx + dy * dy);
+		dx = parseInt(maxx - minx);
+		dy = parseInt(maxy - miny);
+		d = parseInt(Math.sqrt(dx * dx + dy * dy));
 		
 		if (this.initPinchDiagonal === null) {
 			this.initPinchDiagonal = d;
@@ -452,7 +465,7 @@ function touchController(p_controls_mgr) {
 		xcoord = minx + (dx/2.0);
 		ycoord = miny + (dy/2.0);
 		diff = d - this.initPinchDiagonal;
-		k = 1 + Math.abs(diff/(2.0 * maxdim));
+		k = 1 + Math.abs(diff/(4.0 * maxdim));
 			
 		if (diff > 0) {
 			newscale /= k;
@@ -461,17 +474,13 @@ function touchController(p_controls_mgr) {
 			newscale *= k;
 		}
 			
+		this.zoomcenter = [xcoord, ycoord];
+
 			this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
 			if (this.timerId != null) {
 				window.clearTimeout(this.timerId);
 			}
 
-			(function(p_self) {
-				p_self.timerId =  window.setTimeout(function(e) {
-					p_self.controls_mgr.the_map.refresh(false);
-					p_self.clearReference();
-				}, p_self.waitPeriodMsec);
-			})(this);
 	};
 }		
 
@@ -1072,13 +1081,19 @@ function MapControlsMgr(p_the_map) {
 		return false;
 	};
 	
-	this.mouseup = function(e) {
+	this.mouseup = function(e, p_forcedcoords) {
 		
 		if (!e) var e = window.event;
 		let coords=[], target =  getTarget(e);
 		
 		finishEvent(e);
+		
+		if (p_forcedcoords!=null && p_forcedcoords.length > 1) {
+			coords[0] = p_forcedcoords[0];
+			coords[1] = p_forcedcoords[1];
+		} else {
 		getEvtCoords(e, target, coords);
+		}
 				
 		var ret, pt, at = this.getActiveTool();
 		if (at && typeof at.mouseup == 'function') {

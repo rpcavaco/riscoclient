@@ -184,6 +184,11 @@ var m3 = {
 		out_result[8] = 1;
    },
 
+   twod_shift: function(m, dx, dy) {
+		m[6] += dx;
+		m[7] += dy;
+   },
+   
   /**
    * Multiplies by a 2D translation matrix
    * @param {module:webgl-2d-math.Matrix3} the matrix to be multiplied
@@ -267,8 +272,12 @@ var m3 = {
    */
   scale: function (m, sx, sy, out_result) {
 		var intermx = []; 
-		this.scaling(width, height, intermx)
+		this.scaling(sx, sy, intermx)
 		this.multiply(m, intermx, out_result);
+  },
+  // carto pix size
+  getCartoScaling: function(m) {
+	  return (m[0]-m[4])/2.0;
   },
 
   dot: function (x1, y1, x2, y2) {
