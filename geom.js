@@ -9,6 +9,37 @@ var geom = {
 		return p_val * Math.PI / 180.0;
 	},
 		
+	genIntegerEnvelope: function(p_pointslist, opt_integer_radius, out_env) {
+		
+		out_env.length = 4;
+		var minx, miny, maxx, maxy, int_rad = 0;
+		
+		if (opt_integer_radius) {
+			int_rad = opt_integer_radius;
+		}
+		
+		for (var i=0; i<p_pointslist.length; i+=2) {
+
+			minx = Math.floor(p_pointslist[i] - int_rad);
+			miny = Math.floor(p_pointslist[i+1] - int_rad);
+			maxx = Math.ceil(p_pointslist[i] + int_rad);
+			maxy = Math.ceil(p_pointslist[i+1] + int_rad);
+
+			if (out_env[0] == null || out_env[0] > minx) {
+				out_env[0] = minx; 
+			}
+			if (out_env[1] == null || out_env[1] < miny) {
+				out_env[1] = miny; 
+			}
+			if (out_env[2] == null || out_env[2] > maxx) {
+				out_env[2] = maxx; 
+			}
+			if (out_env[3] == null || out_env[3] < maxy) {
+				out_env[3] = maxy; 
+			}
+		}		
+	},
+		
 	segmPoints2DFromPath: function(p_path_coords, p_segm_index, out_pts) {
 		var baseidx;
 		out_pts.length = 2;
@@ -301,10 +332,6 @@ var geom = {
 	distanceToPoly: function(p_pointlist, p_path_levels, p_ptin, opt_debug) 
 	{
 		let ret = 0.0;
-		
-		if (false && opt_debug) {
-			console.log(JSON.stringify(p_pointlist));
-		}
 		
 		if (!this.insidePolygon(p_pointlist, p_path_levels, p_ptin) ) {
 			ret = this.distanceToLine(p_pointlist, p_path_levels, p_ptin, opt_debug);

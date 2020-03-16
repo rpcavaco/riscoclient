@@ -10,7 +10,7 @@ function positioningShifted(p_positioning, p_x, p_y, p_dims, out_xylist) {
 	switch(p_positioning) {
 		case 'cc':
 			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
-			out_xylist[1] = p_y + Math.round(p_dims[1]/2.0);
+			out_xylist[1] = p_y - Math.round(p_dims[1]/2.0);
 			break;
 		case 'cb':
 			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
@@ -18,27 +18,27 @@ function positioningShifted(p_positioning, p_x, p_y, p_dims, out_xylist) {
 			break;
 		case 'ct':
 			out_xylist[0] = p_x - Math.round(p_dims[0]/2.0);
-			out_xylist[1] = p_y + p_dims[1];
+			out_xylist[1] = p_y;
 			break;
 		case 'lc':
 			out_xylist[0] = p_x;
-			out_xylist[1] = p_py - Math.round(p_dims[1]/2.0);
+			out_xylist[1] = p_y - Math.round(p_dims[1]/2.0);
 			break;
 		case 'lb':
 			out_xylist[0] = p_x;
 			out_xylist[1] = p_y - p_dims[1];
 			break;
 		case 'rc':
-			out_xylist[0] = p_x + p_dims[0];
+			out_xylist[0] = p_x - p_dims[0];
 			out_xylist[1] = p_y - Math.round(p_dims[1]/2.0);
 			break;
 		case 'rb':
-			out_xylist[0] = p_x + p_dims[0];
+			out_xylist[0] = p_x - p_dims[0];
 			out_xylist[1] = p_y - p_dims[1];
 			break;
 		case 'rt':
-			out_xylist[0] = p_x + p_dims[0];
-			out_xylist[1] = p_y + p_dims[1];
+			out_xylist[0] = p_x - p_dims[0];
+			out_xylist[1] = p_y;
 			break;
 		default: // lt
 			out_xylist[0] = p_x;
@@ -90,14 +90,14 @@ function setImageFrame(p_scrscalingfactor, p_width, p_height, b_sizefromimage, o
 
 function canvasAddSingleImage(p_canvas, p_fname, p_x, p_y, b_is_inscreenspace,  
 			opt_positioning, opt_width, opt_height, opt_forcemindim, 
-			opt_imgfilter_func, opt_displaylayer) {
+			opt_imgfilter_func, opt_imgfilteradicdata, opt_displaylayer) {
 	
 	let base_image = new Image();
 	base_image.src = p_fname;
 	
 	p_canvas.drawImage(base_image, p_x, p_y, 
 			b_is_inscreenspace, opt_positioning, opt_width, opt_height, 
-			opt_forcemindim, opt_imgfilter_func, opt_displaylayer);
+			opt_forcemindim, opt_imgfilter_func, opt_imgfilteradicdata, opt_displaylayer);
 
 	return base_image;
 }
@@ -200,8 +200,89 @@ function ctxGenericApplyStyle(p_canvasctx, p_styleobj, p_patterns, out_styleflag
 	if (foundattrs.indexOf("shadowblur") < 0) {
 		p_canvasctx.setShadowBlur = 0;
 	}
+}
+
+
+function ImageMarkerManager(p_canvasctrllr) {
+	this.canvasctrllr = p_canvasctrllr;
+	this.images = {};
+	this.marker_instances = {};	
+	this.loadedimages = [];
+	this.clearInstances = function() {
+		this.marker_instances = {};
+	};
+	this.redrawMarkers = function(p_limitkey) {
+		var inst;
+		if (this.loadedimages.length < Object.keys(this.images).length) {
+			return;
+		}
+		if (p_limitkey) {
+			inst = this.marker_instances[p_limitkey];					
+			this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
+				inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
+				inst.optforcemindim, null, null, 
+				inst.optdisplaylayer);	
+		} else {
+			for (var key in this.marker_instances) {		
+				if (this.marker_instances.hasOwnProperty(key)) {			
+					inst = this.marker_instances[key];					
+					this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
+						inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
+						inst.optforcemindim, null, null, 
+						inst.optdisplaylayer);	
+				}
+			}
+		}		
+	};
+	this.setMarker = function(p_path, p_layername, p_gid, p_x, p_y, b_is_inscreenspace,  
+			opt_positioning, opt_width, opt_height, opt_forcemindim, 
+			opt_displaylayer) {
+		
+		let pos, fname, reres, key, bfnamepatt = new RegExp("([^/\.]+)\.[^\.]+$");
+		
+		reres = bfnamepatt.exec(p_path);
+		if (reres!=null && reres.length >= 2) {
+			fname = reres[1];
+		} else {
+			throw new Error("addMarker: unable to get filename (wo ext.) from "+p_path);
+		}
+		
+		if (opt_positioning) {
+			pos = opt_positioning;
+		} else {
+			pos = 'lt';
+		}
+		
+		key = p_layername + "_" + p_gid;
+		
+		this.marker_instances[key] = {
+			'fname': fname, 
+			'anchor': [p_x, p_y], 
+			'pos': pos,
+			'inscrspc': b_is_inscreenspace,
+			'optdims': [opt_width, opt_height],
+			'optforcemindim': opt_forcemindim,
+			'optdisplaylayer': opt_displaylayer
+		};
+
+		if (this.images[fname] === undefined) {
+			this.images[fname] = new Image(); 
+			this.images[fname].src = p_path;
+			(function(p_mrkmgr, p_imageobj) {
+				p_imageobj.onload = function() {
+					if (p_mrkmgr.loadedimages.indexOf(fname) < 0) {
+						p_mrkmgr.loadedimages.push(fname);
+						p_mrkmgr.redrawMarkers();
+					}
+				}
+			})(this, this.images[fname]);
+		} else {
+			this.redrawMarkers(key);
+		}
+	};
 
 }
+
 /** 
   * Object to control HTML Canvas rendering, usually automatically created at MapController instantiation
   * @param {string} p_elemid - The ID of HTML container object to recieve the canvases objects.
@@ -270,6 +351,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	this.markMidpoints = false;
 	this.markMidpointFunc = null;
 	this.maxzindex = -1;
+	this.imgmarkermgr = new ImageMarkerManager(this);
 	
 	// TODO: agarrar eventos do canvas ao refresh do mapcontroller
 	this._mapcontroller = p_mapcontroller;
@@ -338,6 +420,9 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	    this.activeDisplayLayer = p_displayer;		
 	};
 
+	this.getImageData = function(p_x, p_y, p_ctxw, p_ctxh, p_displayer) {
+		return this._ctxdict[layer].getImageData(p_x, p_y, p_ctxw, p_ctxh);
+	};
 	
 	this.getCtx = function(p_displayer) {		
 		var layer;
@@ -388,9 +473,16 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			this.preppedDisplay = true;
 		}
 	};
+	this.clearImageMarkers = function() {
+		if (this.imgmarkermgr) {
+			this.imgmarkermgr.clearInstances();
+		}
+	};
 	this.clearDisplay = function(opt_background)
 	{
 		var displayer;
+		
+		this.clearImageMarkers();
 		for (var li=0; li<this._ctxorder.length; li++) 
     	{
     		displayer = this._ctxorder[li];
@@ -431,7 +523,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			dlayer = this.activeDisplayLayer;
 		}
 		if (this._ctxdict[dlayer] === undefined) {
-			console.trace("missing dlayer '"+dlayer+"' opt:'"+opt_displaylayer+"'");
+			console.trace("missing dlayer '"+dlayer+"' opt display:'"+opt_displaylayer+"'");
 			throw new Error('getStrokeStyle: missing layer');
 		}
 		return this._ctxdict[dlayer].strokeStyle;
@@ -671,6 +763,15 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 		return parseInt(this._ctxdict[dlayer].shadowBlur);
 	};
+	this.setGlobalCompositeOperation = function(p_op, opt_displaylayer) {
+		var dlayer;
+		if (opt_displaylayer) {
+			dlayer = opt_displaylayer;
+		} else {
+			dlayer = this.activeDisplayLayer;
+		}
+		this._ctxdict[dlayer].globalCompositeOperation = p_op;
+	};
 
 	this.setLabelBackground = function(p_style) {
 		this._internalstyles.label_background = p_style;
@@ -844,13 +945,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 
 		var prevmidpt=[0,0], midpt=[0,0], prevpt=[0,0], pt=[];
-
-		
-		/*var lst = this._mapcontroller.transformsQueue.getLastStored();
-		var trans = this._mapcontroller.transformsQueue.transientTransform;
-		console.log([p_layername, (lst!=null), trans.hasChanged()]);*/
-
-		if (retgtype == "POINT" && p_markerfunc != null) {
+		if (retgtype == "POINT" && p_markerfunc != null && p_markerfunc.length > 0) {
 
 			if (is_inscreenspace) {
 				//this._mapcontroller.scrDiffFromLastSrvResponse.getPt(p_points[0], p_points[1], pt);
@@ -858,13 +953,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			} else {
 				this._mapcontroller.getScreenPtFromTerrain(p_points[0], p_points[1], pt);
 			}
-
-			p_markerfunc(this, pt, this._mapcontroller, p_featattrs, opt_displaylayer);
+			window[p_markerfunc](this, pt, this._mapcontroller, p_featattrs, opt_displaylayer);
 			
 		} else {
 		
 			this._ctxdict[dlayer].beginPath();
-
 
 			for (var cpi=0; cpi<p_points.length; cpi+=2) 
 			{
@@ -960,10 +1053,6 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		this._ctxdict[dlayer].beginPath();
 		var pt=[], points;
 		
-		if (false && x_oid == 6536) {
-			console.log("is_inscreenspace:"+is_inscreenspace+" "+dlayer);
-		}
-
 		for (var pidx=0; pidx<p_parts_of_points.length; pidx++)
 		{
 			points = p_parts_of_points[pidx];
@@ -1130,9 +1219,9 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 	}
 	
-	this.drawCrossHairs = function(p_x, p_y, p_stroke, p_fill, 
-			p_size, is_inscreenspace, 
-			opt_displaylayer) 
+	this.drawCrossHairs = function(p_x, p_y, 
+			p_radius, is_inscreenspace, opt_rotatedegs,
+			opt_inner_radius, opt_displaylayer) 
 	{
 		var dlayer, pt=[], cpt=[];
 		if (opt_displaylayer) {
@@ -1143,7 +1232,18 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		
 		pt.length = 2;
 		cpt.length = 2;
-		var sz = p_size;
+		var adeltaw, adeltah,  bdeltaw, bdeltah;
+		var in_adeltaw, in_adeltah,  in_bdeltaw, in_bdeltah;
+		
+		if (opt_rotatedegs) {
+			adeltaw = Math.abs(p_radius * Math.cos(opt_rotatedegs * (Math.PI/180)));
+			adeltah = Math.abs(p_radius * Math.sin(opt_rotatedegs * (Math.PI/180)));
+		} else {
+			adeltaw = 0;
+			adeltah = p_radius;
+		}
+		bdeltaw = adeltah;
+		bdeltah = adeltaw;
 
 		if (p_x!=null && p_y!=null) 
 		{
@@ -1154,27 +1254,75 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 				this._mapcontroller.getScreenPtFromTerrain(p_x, p_y, cpt);
 			}
 		
-			// vertical
-			this._ctxdict[dlayer].beginPath();
-			pt = [cpt[0], cpt[1] - sz];
-			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
-			pt = [cpt[0], cpt[1] + sz];
-			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
-			this._ctxdict[dlayer].stroke();
+			var sz = p_radius;
 			
-			// horizontal
+			if (opt_inner_radius) {
+
+				if (opt_rotatedegs) {
+					in_adeltaw = Math.abs(opt_inner_radius * Math.cos(opt_rotatedegs * (Math.PI/180)));
+					in_adeltah = Math.abs(opt_inner_radius * Math.sin(opt_rotatedegs * (Math.PI/180)));
+				} else {
+					in_adeltaw = 0;
+					in_adeltah = opt_inner_radius;
+				}
+				in_bdeltaw = in_adeltah;
+				in_bdeltah = in_adeltaw;
+				
+				//console.log(['diff h:', adeltah, in_adeltah]);
+		
+				// 'vertical top'
+				this._ctxdict[dlayer].beginPath();
+				pt = [cpt[0] - adeltaw, cpt[1] - adeltah];
+				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				pt = [cpt[0] - in_adeltaw, cpt[1] - in_adeltah];
+				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+				this._ctxdict[dlayer].stroke();			
+
+				// 'vertical bottom'
+				this._ctxdict[dlayer].beginPath();
+				pt = [cpt[0] + in_adeltaw, cpt[1] + in_adeltah];
+				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				pt = [cpt[0] + adeltaw, cpt[1] + adeltah ];
+				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
+				this._ctxdict[dlayer].stroke();			
+
+				// 'horizontal left'
 			this._ctxdict[dlayer].beginPath();
-			pt = [cpt[0] - sz, cpt[1]];
+				pt = [cpt[0] - bdeltaw, cpt[1] + bdeltah ];
 			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
-			pt = [cpt[0] + sz, cpt[1]];
+				pt = [cpt[0] - in_bdeltaw, cpt[1] + in_bdeltah];
 			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
 
-			if (p_stroke) {
+			this._ctxdict[dlayer].stroke();
+			
+				// 'horizontal right' 
+			this._ctxdict[dlayer].beginPath();
+				pt = [cpt[0] + in_bdeltaw, cpt[1] - in_bdeltah];
+				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				pt = [cpt[0] + bdeltaw, cpt[1] - bdeltah];
+				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+				
+			} else {		
+				// 'vertical'
+				this._ctxdict[dlayer].beginPath();
+				pt = [cpt[0] - adeltaw, cpt[1] - adeltah];
+			this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				pt = [cpt[0] + adeltaw, cpt[1] + adeltah];
+			this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
+
 				this._ctxdict[dlayer].stroke();
+
+				// 'horizontal'
+				this._ctxdict[dlayer].beginPath();
+				pt = [cpt[0] - bdeltaw, cpt[1] + bdeltah];
+				this._ctxdict[dlayer].moveTo(pt[0], pt[1]);
+				pt = [cpt[0] + bdeltaw, cpt[1] - bdeltah];
+				this._ctxdict[dlayer].lineTo(pt[0], pt[1]);
 			}
-			if (p_fill) {
-				this._ctxdict[dlayer].fill();
-			}
+
+			this._ctxdict[dlayer].stroke();			
 			
 		}
 	};
@@ -1353,7 +1501,56 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 		}
 	};
 	
-	this.toGrayScaleImgFilter = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh) {
+	this.tintImgFilter = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh, p_filteradicdata) {
+		
+		var alpha, rgbcolorlist = p_filteradicdata['rgbcolorlist'];
+		if (p_filteradicdata['alpha'] !== undefined) {
+			alpha = p_filteradicdata['alpha'];
+		} else {
+			alpha = 1.0;
+		}
+
+		try {
+			var imageData = p_ctx.getImageData(p_x, p_y, p_ctxw, p_ctxh);
+			var data = imageData.data;
+
+			for(var i = 0; i < data.length; i += 4) {
+			  if (data[i+3] == 0) {
+				  continue;
+			  }
+			  /*if (data[i+3] < 1) {
+				  //console.log([data[i], data[i+1], data[i+2], data[i+3]]);
+				  continue;
+			  }*/
+			  // red
+			  data[i] =  data[i] + (rgbcolorlist[0]-data[i]) * alpha;
+			  // green
+			  data[i+1] =  data[i+1] + (rgbcolorlist[1]-data[i+1]) * alpha;
+			  // blue
+			  data[i+2] =  data[i+2] + (rgbcolorlist[2]-data[i+2]) * alpha;
+			}
+
+			// overwrite original image
+			p_ctx.putImageData(imageData, p_x, p_y);    			
+			
+		} catch(e) {
+			var accepted = false
+			if (e.name !== undefined) {
+				if (["NS_ERROR_NOT_AVAILABLE"].indexOf(e.name) >= 0) {
+					accepted = true;
+				}
+			}
+			if (!accepted) {
+				console.log("... drawImage ERROR ...");
+				console.log(p_imgobj);
+				console.log(e);
+			}
+				
+		}
+	};
+		
+	this.toGrayScaleImgFilter = function(p_ctx, p_imgobj, p_x, p_y, p_ctxw, p_ctxh, null_filteradicdata) {
+		
 		try {
 			var imageData = p_ctx.getImageData(p_x, p_y, p_ctxw, p_ctxh);
 			var data = imageData.data;
@@ -1369,7 +1566,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 
 			// overwrite original image
-			p_ctx.putImageData(imageData, p_x, p_y);    			
+			this._ctxdict[dlayer].putImageData(imageData, p_x, p_y);    			
 			
 		} catch(e) {
 			var accepted = false
@@ -1380,7 +1577,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 			if (!accepted) {
 				console.log("... drawImage ERROR ...");
-				console.log(p_imageobj);
+				console.log(p_imgobj);
 				console.log(e);
 			}
 				
@@ -1389,7 +1586,8 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	
 	this.drawImage = function(p_imageobj, p_x, p_y, 
 			b_is_inscreenspace, opt_positioning, opt_width, opt_height, 
-			opt_forcemindim, opt_imgfilter_func, opt_displaylayer) {
+			opt_forcemindim, opt_imgfilter_func, opt_imgfilteradicdata, 
+			opt_displaylayer) {
 				
 		var pos, dlayer, dimdefined, pt = [], outxy=[], dims=[];
 		if (opt_displaylayer) {
@@ -1420,12 +1618,20 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 					p_imageobj.width, p_imageobj.height, true, opt_forcemindim, dims);
 			}
 			positioningShifted(pos, pt[0], pt[1], dims, outxy);
+			try {
 			this._ctxdict[dlayer].drawImage(p_imageobj, outxy[0], outxy[1],  dims[0], dims[1]);
+			} catch(e) {
+				if (e.name !== undefined && e.name == 'NS_ERROR_NOT_AVAILABLE') {
+					console.warn(String.format("drawImage - image not found:{0}", p_imageobj.src));
+				} else {
+					throw new Error(e);
+				}
+			}
 			if (opt_imgfilter_func) {
-				opt_imgfilter_func(this._ctxdict[dlayer], p_imageobj, outxy[0], outxy[1], dims[0], dims[1]);
+				opt_imgfilter_func(this._ctxdict[dlayer], p_imageobj, outxy[0], outxy[1], dims[0], dims[1], opt_imgfilteradicdata);
 			}
 		} else {
-			(function(p_pctx, p_sclfactor, p_img, p_pos, p_px, p_py, p_optw, p_opth, p_opt_imgfilter_func) {
+			(function(p_pctx, p_sclfactor, p_img, p_pos, p_px, p_py, p_optw, p_opth, p_opt_imgfilter_func, p_imgfilteradicdata) {
 				p_img.onload = function() {
 					if (p_optw!=null && p_opth!=null) {
 						setImageFrame(p_sclfactor, 
@@ -1437,11 +1643,11 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 					positioningShifted(p_pos, p_px, p_py, dims, outxy);
 					p_pctx.drawImage(p_img, outxy[0], outxy[1],  dims[0], dims[1]);
 					if (p_opt_imgfilter_func) {
-						p_opt_imgfilter_func(p_pctx, p_img, outxy[0], outxy[1],  dims[0], dims[1]);
+						p_opt_imgfilter_func(p_pctx, p_img, outxy[0], outxy[1],  dims[0], dims[1], p_imgfilteradicdata);
 					}
 				}
 			})(this._ctxdict[dlayer],  this._mapcontroller.getScreenScalingFactor(),
-					p_imageobj, pos, pt[0], pt[1], opt_width, opt_height, opt_imgfilter_func);
+					p_imageobj, pos, pt[0], pt[1], opt_width, opt_height, opt_imgfilter_func, opt_imgfilteradicdata);
 		}
 		
 	};
@@ -1498,4 +1704,20 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			
 			return false;
 	};
+	
+	
+	this.setMarker = function(p_fpath, p_layername, p_gid, p_x, p_y, b_is_inscreenspace,  
+			opt_positioning, opt_width, opt_height, opt_forcemindim, 
+			opt_displaylayer) {
+
+		if (this.imgmarkermgr) {
+			this.imgmarkermgr.setMarker(p_fpath, p_layername, p_gid, p_x, p_y, b_is_inscreenspace,  
+				opt_positioning, opt_width, opt_height, opt_forcemindim, 
+				opt_displaylayer)
+		}	
+	}
+
+
+
+	
 }

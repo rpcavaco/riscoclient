@@ -42,12 +42,14 @@ var EditControllerRisco = {
 	_defdisplyr: null,
 	startingFeature: null,
 	featInEdition: null,
+	layerInEdition: null,
 	featInEditionChanged: false,
 	currentUser: null,
 	editAuthBool: false,
 	selFeatRedrawFunc: null,
 	setCurrentUser: EditControllerDefs.setCurrentUser,
 	msgController: null,
+	symbModifier: null,
 	setMsgController: function(p_obj) {
 		this.msgController = p_obj;
 	},
@@ -55,6 +57,9 @@ var EditControllerRisco = {
 		if (this.msgController) {
 			this.msgController.setMessage(p_msg_txt, p_mode, opt_fyes, opt_fno);
 		}
+	},
+	setSymbModifier: function (p_modif) {
+		this.symbModifier = p_modif;
 	},
 	getCurrentUser: function() {
 		return this.currentUser;
@@ -73,14 +78,15 @@ var EditControllerRisco = {
 	getDefaultMapDispLayer: function() {
 		return this._defdisplyr;
 	},
-	setFeatInEdition: function(p_feat) {
+	setFeatInEdition: function(p_feat, p_layername) {
 		this.featInEdition = clone(p_feat);
 		this.featInEditionChanged = false;
 		this.startingFeature = clone(p_feat);
+		this.layerInEdition = p_layername;
 	},
-	ensureFeatInEdition: function(p_feature) {
+	ensureFeatInEdition: function(p_feature, p_layername) {
 		if (p_feature!=null && this.startingFeature == null) {
-			this.setFeatInEdition(p_feature);
+			this.setFeatInEdition(p_feature, p_layername);
 		}
 	},	
 	getFeatInEdition: function() {
@@ -95,37 +101,31 @@ var EditControllerRisco = {
 		//console.log(this.featInEdition);
 		return (this.featInEdition != null);
 	},
-	activate: function(p_feature, p_silent) {
-		this._activate(true, p_feature, p_silent)
+	activate: function(p_feature, p_layername, p_silent) {
+		return this._activate(true, p_feature, p_layername, p_silent)
 	},
 	deactivate: function(p_silent) {
-		this._activate(false, null, p_silent)
+		return this._activate(false, null, null, p_silent)
 	},
-	_activate: function(p_doactivate, p_feature, p_silent) {
-		/*
-		console.trace("_activate");
-		console.log(p_doactivate);
-		console.log(p_feature);
-		console.log(p_silent);
-		* */
-		//EditController.mode = 'none';
-		let displayer, map;
+	_activate: function(p_doactivate, p_feature, p_layername, p_silent) {
+		let displayer, map, ret = false;
 		if (!this.editAuthBool) {
-		//if (false) {
 			if (!p_silent) {
 				this.setMessage(MsgCtrl.getMsg(EditControllerDefs.userNotAuthenticatedMsg), "WARN");
 			}
-			return false;
+			ret = false;
 		} else {
 			this._isactive = p_doactivate;
 			if (this._isactive) {
 				// Activar edição
 				EditController.init();
 				this.setMessage(MsgCtrl.getMsg(EditControllerDefs.enteringEditModeMsg), "INFO");
-				
 				if (p_feature!=null) {
-					this.setFeatInEdition(p_feature);
+					this.setFeatInEdition(p_feature, p_layername);
+				} else {
+					this.layerInEdition = p_layername;
 				}
+				ret = true;
 			} else {
 				// Desactivar edição
 				displayer = this._defdisplyr;
@@ -135,17 +135,15 @@ var EditControllerRisco = {
 					this.doSave();
 				} else {
 					map.clearDispLayer(displayer);
-
 					if (EditController.selFeatRedrawFunc!=null && EditController.featInEditionExists()) {
 						EditController.selFeatRedrawFunc(EditController.getFeatInEdition());
 					}
-
-					//this.clearFeatInEdition();
-
 				}
+				ret = false;
 			}
-			return true;
 		}
+		
+		return ret;
 	},
 	isActive: function() {
 		return this._isactive;
@@ -156,22 +154,20 @@ var EditControllerRisco = {
 		if (map==null) {
 			throw new Error("EditController, preparePayload: no map controller");
 		}
-		transf_loc = [];
-		map.getTerrainPt(p_location, transf_loc, false);
 		var geojsonfeat = {
 			"type": "Feature",
 			"geometry": {
 				"type": "Point",
-				"coordinates": [transf_loc[0], transf_loc[1]]
+				"coordinates": [p_location[0], p_location[1]]
 			}
 		};
 		return EditControllerDefs.payloadTemplate(geojsonfeat, p_gisid);
 	},
-	setNextPoint: function(null_map, x, y, p_layername, markerfunc_modifier, opt_displaylyr) {
+	setNextPoint: function(null_map, x, y, opt_do_debug) {
 	// null_map, opt_displaylyr and searchtolerance are currently ignored, this._defmapctrlr is used, searchtolerance also ignored
 	// new feature: type "point" is forced
 		let map;
-		let displayer;
+		let displayer, terrpt=[];		
 		if (this._isactive ) {
 			map = this._defmapctrlr;
 			displayer = this._defdisplyr;
@@ -181,16 +177,24 @@ var EditControllerRisco = {
 				genNewEmptyFeature("point", this.featInEdition);
 			}
 			if (this.featInEditionExists()) {
-				setNextPoint(this.getFeatInEdition(), x, y);
+				map.getTerrainPt([x,y], terrpt);			
+				setNextPoint(this.getFeatInEdition(), terrpt[0], terrpt[1]);
 				this.featInEditionChanged = true;
-				map.drawSingleFeatureFeat(p_layername, this.getFeatInEdition(), true,
-							displayer, null, markerfunc_modifier, false);
+				map.drawNewFeature(this.layerInEdition, this.getFeatInEdition(), 
+							this.symbModifier,
+							null, displayer, opt_do_debug);
 			}
 		}
 	},	
-	mouseClick: function(null_map, x, y, layername, markerfunc_modifier) { 
+	refresh: function() {
+		if (this._isactive && this.featInEditionExists()) {
+			this._defmapctrlr.drawNewFeature(this.layerInEdition, this.getFeatInEdition(), 
+						this.symbModifier, null, this._defdisplyr, false);
+		}
+	},
+	mouseClick: function(null_map, x, y) { 
 		// null_map is currently ignored, this._defmapctrlr is used
-		EditController.setNextPoint(null_map, x, y, layername, markerfunc_modifier);
+		EditController.setNextPoint(null_map, x, y, false);
 	},
 	setSelFeatRedrawFunc: function(p_func) {
 		this.selFeatRedrawFunc = p_func;

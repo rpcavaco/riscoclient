@@ -185,6 +185,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.dataRetrievalEnvExpandFactor = 1.0;
 	this.refreshmode = 0;
 	this.refreshcapability = 0;
+	this.adic_refresh_func = [];
 	this.rasterlayersrequested = [];
 	this.maxscaleview = null;
 	this.drawnrasters = [];
@@ -221,6 +222,9 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			//this.revindex = {};
 			this.index = {};
 		}
+	};
+	this.addAdicRefreshFunc = function(p_new_func) { // Usually for editor refresh function
+		this.adic_refresh_func.push(p_new_func);
 	};
 	this.lastSrvResponseTransform = {
 		cenx: -1,
@@ -534,7 +538,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		this.getCenter(cen);
 		this.env.setNullAround(cen);
-		this.getTerrainPt([0,cdims[1]], pt)
+		this.getTerrainPt([0,cdims[1]], pt);
 		this.env.addPoint(pt);
 		this.getTerrainPt([cdims[0],0], pt)
 		this.env.addPoint(pt);
@@ -563,6 +567,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		
 		// clean perattribute object symbolization indexing
 		this.perattribute_indexing.reset();
+
+		var gc = MAPCTRL.getGraphicController();
+		if (gc) {
+			gc.clearImageMarkers();
+		}
 
 		this.calcMapTransform(null, opt_forceprepdisp);
 		this.transformsQueue.checkToStore();
@@ -626,7 +635,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 		//console.log([ p_start_terrain[0],  p_start_terrain[1], terrain_pt[0], terrain_pt[1],  deltax, deltay]);
 
-		if (Math.abs(deltascrx) > 0 || Math.abs(deltascry) > 0) {
+		if (Math.abs(deltascrx) > 1 || Math.abs(deltascry) > 1) {
 			//this.scrDiffFromLastSrvResponse.moveCenter(deltascrx, deltascry);
 			this.moveCenter(deltax, deltay);
 			this.redraw(true);
@@ -663,7 +672,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 	// called by discrete zoom in / zoom - with refresh	
 	this.changeScale = function(p_scale) {
-		this._changeScale(p_scale, false);
+		cdims = this.getGraphicController().getCanvasDims();
+		this._changeScale(p_scale, false, cdims[0]/2, cdims[1]/2);
 	}
 
 	// apenas para uso interno
@@ -1574,7 +1584,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return storedImgObj;
 	};
 
-
 	// returns true if multipart
 	this._storeFeat = function(p_buildarray, p_content_obj, p_layername,
 			oidkey, p_cenx, p_ceny, p_pixsz, out_readfc)
@@ -1604,7 +1613,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		storedfeatdata.points = [];
 		storedfeatdata.path_levels = 0;
 
-		// TODO: attrs transportados numa lista, lista ordenada dos nomes respectivos tem de ser transportada no ínicio da transmissão desde a BD
+		// TODO: attrs transportados numa lista, lista ordenada dos nomes 
+		//   respectivos tem de ser transportada no ínicio da transmissão desde a BD
 		storedfeatdata.attrs = {};
 
 		if (p_content_obj.crds !== undefined && p_content_obj.crds != null)
@@ -1933,7 +1943,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 								this._drawFeature(feat, p_perattribute_style, p_permode_style, 
 										p_markerfunction, p_permodemarker,
 										is_inscreenspace, layername, in_styleflags, 
-										dodebug, opt_displaylayer, oidkey);
+										dodebug, opt_displaylayer);
 								drawn = true;
 							} catch(e) {
 								console.trace(e);
@@ -1951,7 +1961,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					this._drawFeature(feat, p_perattribute_style, p_permode_style, 
 							p_markerfunction, p_permodemarker,
 							is_inscreenspace, layername, in_styleflags,  
-							dodebug, opt_displaylayer, oidkey);
+							dodebug, opt_displaylayer);
 				}
 
 				if (dodebug) {
@@ -2199,14 +2209,12 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 									p_markerfunction, p_permodemarker,
 									is_inscreenspace, p_layername,
 									out_styleflags, opt_dodebug, 
-									opt_displaylayer, opt_oidkey, opt_noincvizstats)
+									opt_displaylayer, opt_noincvizstats)
 	{
 		var pac, paci, attrval, gtype, tsty;
 		//var hasperattribstyle = false;
 		var stylechanged = false;
 		let markerf = null;
-		
-		//console.log([p_layername, is_inscreenspace]);
 		
 		var displaylayer;
 		if (opt_displaylayer == null) {
@@ -2368,14 +2376,19 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
 		
-	this.drawCrossHairs = function(p_x, p_y, p_size, is_inscreenspace, p_styleobj, opt_displaylayer) {
+	this.drawCrossHairs = function(p_x, p_y, p_size, is_inscreenspace, p_styleobj, opt_rotated, opt_inner_radius, opt_displaylayer) {
 
 		let styleflags = {};
 	
 		this.getGraphicController().saveCtx(opt_displaylayer);
 		this.applyStyle(p_styleobj, styleflags, opt_displaylayer);
 		
-		this.getGraphicController().drawCrossHairs(p_x, p_y, styleflags.stroke, styleflags.fill, p_size, is_inscreenspace, opt_displaylayer);		
+		if (styleflags.stroke) {
+			this.getGraphicController().drawCrossHairs(p_x, p_y, p_size, 
+				is_inscreenspace, opt_rotated, opt_inner_radius, opt_displaylayer);	
+		} else {
+			console.warn("drawCrossHairs required without proper stroke style");
+		}
 
 		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};
@@ -2417,9 +2430,11 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	 // this.activateLayerStyle = function(layername, out_styleflags, 
 		//		out_return, opt_displaylayer)
 	this.activateLayerStyle = function(layername, out_return_obj, 
-				opt_displaylayer, opt_style)
+				opt_displaylayer, opt_style, opt_symb_modifier)
 	{
 		'use strict';
+		
+		// TODO -- FALTA IMPLEMENTAR opt_symb_modifier 
 		var ret = true;
 		var p_scale_val, selstyle=null,  dep_rendering_scaleval = null;
 		var this_has_bgdependent = false;
@@ -2660,13 +2675,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 									out_return.permodemarker[opt_markerf_modifier], {},
 									is_inscreenspace, p_layername,
 									out_return.fillStroke, dodebug,  
-									opt_displaylayer, p_objid, true);
+									opt_displaylayer, true);
 			} else {
 				this._drawFeature(feat, out_return.perattribute, out_return.permode, 
 									out_return.markerfunction, out_return.permodemarker,
 									is_inscreenspace, p_layername,
 									out_return.fillStroke, dodebug,  
-									opt_displaylayer, p_objid, true);
+									opt_displaylayer, true);
 			}
 		} else {
 			console.warn("drawSingleFeature, NULL feature data, key:"+p_objid);
@@ -2707,45 +2722,64 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		return feat;
 	};
 
-	// Not advisable to use on features persistent  between redraws:
-	//  as the feature passed in p_feat is static, feat coords are not 
-	//  updated between successive map refreshes
-	/*
-	this.drawSingleFeatureFeat = function(p_layername, p_feat, is_inscreenspace,
-							opt_displaylayer, opt_style, opt_markerf_modifier, opt_do_debug)
+	// drawSingleFeatureFeat method is only for new features persistent between 
+	//  redraws and refreshes, not read from server. In order to guarantee 
+	//  proper continuous placement, only terrain feat coords are allowed. 
+	// Server-emitted features are defined in always correct screen coords,
+	//  updated by server methods and changed between refreshes.
+
+	this.drawNewFeature = function(p_layername, p_feat, opt_symb_modifier,
+							opt_style, opt_displaylayer, opt_do_debug)
 	{
 		'use strict';
+		var opt = false, out_return = {}, mrkrf;
 
-		var out_return = {};
-		var dodebug = false; // DEBUG
-
-		if (opt_do_debug) {
-			dodebug = opt_do_debug;
+		if (p_layername == null) {
+			throw new Error("drawNewFeature: null layername");
 		}
 		
-		this.activateLayerStyle(p_layername, out_return, opt_displaylayer, opt_style);
+		this.activateLayerStyle(p_layername, out_return, opt_displaylayer, opt_style, opt_symb_modifier);
 
-		if (opt_markerf_modifier) {
-			this._drawFeature(p_feat, out_return.perattribute, out_return.permode, 
-								out_return.permodemarker[opt_markerf_modifier], {},
-								is_inscreenspace, p_layername,
-								out_return.fillStroke, dodebug,  
-								opt_displaylayer);
+		// mudar isto para dentro de activateLayerStyle
+		//console.log(opt_symb_modifier);
+		//console.log(out_return);
+
+		if (opt_symb_modifier) {
+			if (out_return.permodemarker != null && out_return.permodemarker[opt_symb_modifier] !== undefined) {
+				opt = true;
+				mrkrf = out_return.permodemarker[opt_symb_modifier];
+			} else {
+				mrkrf = out_return.markerfunction;
+			}
+			if (!opt) {
+				if (out_return.permode != null && out_return.permode[opt_symb_modifier] !== undefined) {
+					opt = true;
+					//mrkrf = out_return.permodemarker[opt_symb_modifier];
+				} else {
+					//mrkrf = out_return.markerfunction;
+				}
+			}
+			if (!opt) {
+				console.warn("drawSingleFeature, marker modifier mode '"+opt_markerf_modifier+"' given but no config exists to support it (in permodemarker), layer:"+p_layername);
+				return null;
+			}
 		} else {
-			this._drawFeature(p_feat, out_return.perattribute, out_return.permode, 
-								out_return.markerfunction, out_return.permodemarker,
-								is_inscreenspace, p_layername,
-								out_return.fillStroke, dodebug,  
-								opt_displaylayer, p_objid);
+			mrkrf = out_return.markerfunction;
 		}
+		
+
+			this._drawFeature(p_feat, out_return.perattribute, out_return.permode, 
+								mrkrf, out_return.permodemarker,
+								false, p_layername,
+								out_return.fillStroke, opt_do_debug, 
+								opt_displaylayer, false);
 
 		if (out_return.hasstyle) {
 			this.popStyle(out_return.fillStroke, opt_displaylayer);
 		}
 
-		return feat;
+		return p_feat;
 	};
-	*/
 
 	this._drawRasterLyr = function(p_rastername, opt_maxallowed_duration, opt_force, opt_displaylayer)
 	{
@@ -2877,7 +2911,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 									out_return.permode, out_return.markerfunction , 
 									out_return.permodemarker, is_inscreenspace, 
 									layername, out_return.fillStroke,
-									dodebug, opt_displaylayer, ci);
+									dodebug, opt_displaylayer);
 				ci++;
 			}
 		}
@@ -2900,7 +2934,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				this._drawFeature(ldata[oidkey], out_return.perattribute, 
 						out_return.permode, out_return.markerfunction , 
 						out_return.permodemarker, is_inscreenspace, layername, 
-						out_return.fillStroke, dodebug, opt_displaylayer, oidkey);
+						out_return.fillStroke, dodebug, opt_displaylayer);
 				if (maxallowed_duration > 0)
 				{
 						t1 = Date.now();
@@ -3943,6 +3977,13 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			throw(e);
 		}
 
+		// editor refresh
+		if (this.adic_refresh_func.length > 0) {
+			for (var arfi=0; arfi<this.adic_refresh_func.length; arfi++) {
+				this.adic_refresh_func[arfi]();
+			}
+		}
+		
 		this._cancelCurrentChange = false;
 	};
 

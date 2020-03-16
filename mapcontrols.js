@@ -223,12 +223,8 @@ function Picker(mouseButtonMask, p_mapctrl)
 					continue;
 				}
 				var funcname = this.actions_per_evttype_per_layer['mousemove'][lname];
-				if (funcname) {
-					try {
+				if (funcname && window[funcname]!== undefined) {
 						window[funcname](this.the_map, x, y, lname);
-					} catch(e) {
-						console.warn(e);
-					}
 				}
 			}
 		}		
@@ -247,19 +243,26 @@ function mouseWheelController(p_controls_mgr) {
 	
 	this.controls_mgr = p_controls_mgr;
 	this.timerId = null;
-	this.waitPeriodMsec = 400;
+	this.starttime = null
+	this.shortWaitPeriodMsec = 5;
+	this.refreshPeriodMsec = 700;
+	
+	this.limitcount = 1000;
+	this.count = 0;
 	
 	this.clearReference = function() {
 		if (this.timerId != null) {
 			window.clearTimeout(this.timerId);
 			this.timerId = null;
+			this.starttime = null;
+			this.count = 0;
 		}
 	};
 	
 	this.mousewheel = function(e) 
 	{
 		let k;
-		let newscale = this.controls_mgr.the_map.getScale();
+		let coords=[], newscale = this.controls_mgr.the_map.getScale();
 
 		if (!e) var e = window.event;
 		
@@ -273,14 +276,17 @@ function mouseWheelController(p_controls_mgr) {
 			return false;
 		}
 		
+		this.starttime = Date.now();
+		this.count = 0;
+		
 		if (target.parentNode) {
 			op = target.parentNode;
 		} else {
 			op = target;
 		}
 		
-		var xcoord = e.pageX - op.offsetLeft;
-		var ycoord = e.pageY - op.offsetTop;
+		finishEvent(e);
+		getEvtCoords(e, target, coords);
 		
 		k = 1 + adelta/200.0;
 			
@@ -291,18 +297,29 @@ function mouseWheelController(p_controls_mgr) {
 			newscale *= k;
 		}
 			
-		this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
+		var pt = [];
+		this.controls_mgr.the_map.getTerrainPt(coords, pt)		
+		this.controls_mgr.the_map.quickChangeScale(newscale, coords[0], coords[1]);
 		
-		if (this.timerId != null) {
-			window.clearTimeout(this.timerId);
+		if (this.timerId == null) {
+			(function(p_self) {
+				p_self.timerId = window.setInterval(function(e) {
+					p_self.count = p_self.count + 1;
+					if (p_self.starttime == null) {
+						return;
 		}
-
-		(function(p_self) {
-			p_self.timerId =  window.setTimeout(function(e) {
+					let tdelta = Date.now() - p_self.starttime;
+					if (tdelta > p_self.refreshPeriodMsec) {
+						p_self.clearReference();	
 				p_self.controls_mgr.the_map.refresh(false);
+					} else {
+						if (p_self.count > p_self.limitcount) {
 				p_self.clearReference();
+						}
+					}
 			}, p_self.waitPeriodMsec);
 		})(this);
+		}
 
 		return false;
 	}	
@@ -328,20 +345,12 @@ function touchController(p_controls_mgr) {
 	};
 	
 	this.controls_mgr = p_controls_mgr;
-	this.timerId = null;
 	this.zoomcenter = [];
 	this.waitPeriodMsec = 400;
 	this.initPinchDiagonal = null;
 	this.started = false;
 	
 	this.ongoingTouches = [];
-	
-	this.clearReference = function() {
-		if (this.timerId != null) {
-			window.clearTimeout(this.timerId);
-			this.timerId = null;
-		}
-	};
 	
 	this.ongoingTouchIndexById = function(idToFind) {
 		for (var i = 0; i < this.ongoingTouches.length; i++) {
@@ -400,6 +409,7 @@ function touchController(p_controls_mgr) {
 	};
 
 	this.touchend = function(e) {
+		
 		e.preventDefault();
 		let ret = null, found = null;
 		let idx, touches = e.changedTouches;
@@ -426,6 +436,7 @@ function touchController(p_controls_mgr) {
 
 		this.started = false;
 		return ret;
+		
 	};
 
 	this.dozoom = function() {
@@ -443,11 +454,8 @@ function touchController(p_controls_mgr) {
 		maxdim = Math.max(cdims[0], cdims[1]);
 		
 		for (let i=0; i < 2; i++) {
-			
 			t = this.ongoingTouches[i];
-			
 			getEvtCoords(t, t.target, coords);
-			
 			minx = Math.min(minx, coords[0]);
 			miny = Math.min(miny, coords[1]);
 			maxx = Math.max(maxx, coords[0]);
@@ -465,7 +473,7 @@ function touchController(p_controls_mgr) {
 		xcoord = minx + (dx/2.0);
 		ycoord = miny + (dy/2.0);
 		diff = d - this.initPinchDiagonal;
-		k = 1 + Math.abs(diff/(4.0 * maxdim));
+		k = 1 + Math.abs(diff/(2.0 * maxdim));
 			
 		if (diff > 0) {
 			newscale /= k;
@@ -475,12 +483,7 @@ function touchController(p_controls_mgr) {
 		}
 			
 		this.zoomcenter = [xcoord, ycoord];
-
 			this.controls_mgr.the_map.quickChangeScale(newscale, xcoord, ycoord);
-			if (this.timerId != null) {
-				window.clearTimeout(this.timerId);
-			}
-
 	};
 }		
 

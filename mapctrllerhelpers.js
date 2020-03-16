@@ -1085,7 +1085,9 @@ function StyleVisibility(p_mapctrlr, p_config) {
 			LEGEND_CONTROL_DEFAULTS.width = 20;
 		} else {
 			leg_tmp_elem = document.getElementById('legendctrl');
+			if (leg_tmp_elem) {
 			leg_tmp_elem.style.width = LEGEND_CONTROL_DEFAULTS.width + 'px';
+		}
 		}
 
 		if (LEGEND_CONTROL_DEFAULTS.entrywidth === undefined) {
@@ -1113,8 +1115,7 @@ function StyleVisibility(p_mapctrlr, p_config) {
 				thematic_widget = null;
 				additions_to_backingobj = 0; // additions to backing object from JUST this layer
 				
-				//console.log(this.styles);
-//console.log("...... LNAME"+lname);
+				if (this.styles[lname] !== undefined) {
 
 				for (var k=0; k<this.styles[lname].length; k++) {
 
@@ -1155,6 +1156,8 @@ function StyleVisibility(p_mapctrlr, p_config) {
 					}				
 
 					ordredstyles.push([sty._index, sty]);
+				}
+					
 				}
 /*
 for (var k=0; k<ordredstyles.length; k++) {
@@ -1350,21 +1353,16 @@ console.log("lname:"+lname+" lblk found:"+labelkey_found);
 				}				
 			}
 			
-			try {
+			if (backing_obj_arr[backing_obj_arr.length-1] !== undefined) {
 				if (backing_obj_arr[backing_obj_arr.length-1].lblstyle == 'SUBENTRY') {
 					backing_obj_arr[backing_obj_arr.length-1].grpbndry = 'STOP';
 				}	
-			} catch (e) {
-				console.warn("Impossivel verificar grp boundary");
-				console.warn("len backing_obj:"+backing_obj_arr.length); 
 			}	
 
-//	console.log("   lname:"+lname);
-//	console.log(backing_obj_arr);
+			var new_backing_obj_arr = [];
+			if (p_floating_widgets_mgr!=null && p_floating_widgets_mgr.calcLegSize !== undefined) {
 
 			p_floating_widgets_mgr.calcLegSize(backing_obj_arr.length, leg_dims);
-			
-			var paddingval, new_backing_obj_arr = [];
 			
 			while (leg_dims.cols > leg_prevcols) {
 				leg_prevcols = leg_dims.cols;
@@ -1393,8 +1391,10 @@ console.log("lname:"+lname+" lblk found:"+labelkey_found);
 					p_floating_widgets_mgr.calcLegSize(backing_obj_arr.length, leg_dims);
 				}
 			}
+			}
 
 			currlayercaption = null;		
+			var paddingval;
 			
 			leg_container = document.getElementById(this.widget_id);
 			if (leg_container) {
@@ -1600,14 +1600,17 @@ console.log("lname:"+lname+" lblk found:"+labelkey_found);
 				}
 			}
 			
-			if (!legendcaption_created && capparent.parentElement !== undefined) {
+			if (typeof STATIC_LEGEND == 'undefined' || !STATIC_LEGEND) {
+				if (!legendcaption_created && capparent!=null && capparent.parentElement !== undefined) {
 				let count = 8, pe = capparent;
 				while (count > 0 && pe != null && (pe.tagName.toLowerCase() != 'div' || this.widget_id == pe.id)) {
 					pe = pe.parentElement;
 					count--;
 				}
 				if (pe.tagName.toLowerCase() == 'div') {
+						console.log(pe.id);
 					pe.style.visibility = "hidden";
+					}
 				}
 			}
 			
