@@ -196,7 +196,7 @@ function MapLabelEngine(p_mapcontroller) {
 							}
 
 							grCtrller.drawSimplePath(coords, false, true, null, 
-									p_inscreenspace, opt_displaylayer, false); 
+									p_inscreenspace, false, null, null, opt_displaylayer); 
 
 							geom.applyPolarShiftTo(startpt, 
 									angle_ret[0], offsetA, anchpt);
@@ -237,7 +237,7 @@ function MapLabelEngine(p_mapcontroller) {
 							}
 
 							grCtrller.drawSimplePath(coords, false, true, 
-									null, p_inscreenspace, opt_displaylayer, false); 
+									null, p_inscreenspace, false, null, null, opt_displaylayer); 
 
 							geom.applyPolarShiftTo(startpt, 
 									angle_ret[0], -offsetA, anchpt);

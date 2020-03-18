@@ -2189,9 +2189,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 				if (p_dolog) {
 					console.log(".. drawFeatureInCanvas, LINE/POINT before drawSimplePath");
 				}				
-
 				gtype = this.getGraphicController().drawSimplePath(p_feature.points, p_dostroke, p_dofill, 
-					p_markerf, is_inscreenspace, opt_displaylayer, p_dolog, p_feature.attrs, opt_layername);			
+					p_markerf, is_inscreenspace, p_dolog, p_feature.oid, p_feature.attrs, opt_displaylayer);			
 					
 				break;
 				
@@ -2405,7 +2404,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		let markerfunc = null;
 
 		this.getGraphicController().drawSimplePath(p_points, styleflags.stroke, styleflags.fill,  
-					markerfunc, is_inscreenspace, opt_displaylayer, dolog);
+					markerfunc, is_inscreenspace, dolog, null, null, opt_displaylayer);
 
 		this.getGraphicController().restoreCtx(opt_displaylayer);
 	};

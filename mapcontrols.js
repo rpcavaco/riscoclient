@@ -621,7 +621,7 @@ function _MeasureSegment(mouseButtonMask, p_mapctrl) {
 					true, 'transient');
 
 				gc.drawSimplePath([this.start_map[0], this.start_map[1], current_map[0], current_map[1]], true, true,  
-					null, true, 'transient', draw_dolog) 
+					null, true, draw_dolog, null, null, 'transient') 
 
 				geom.twoPointAngle(this.start_screen, [x,y], angvals);
 				
