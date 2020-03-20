@@ -215,22 +215,22 @@ function ImageMarkerManager(p_canvasctrllr) {
 		if (this.images[p_fname].complete) {
 			if (opt_limitkey) {
 				inst = this.marker_instances[p_fname][opt_limitkey];					
-			this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
-				inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
-				inst.optforcemindim, null, null, 
-				inst.optdisplaylayer);	
-		} else {
+				this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
+					inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
+					inst.optforcemindim, null, null, 
+					inst.optdisplaylayer);	
+			} else {
 				insts = this.marker_instances[p_fname];
 				for (var key in insts) {		
 					if (insts.hasOwnProperty(key)) {			
 						inst = insts[key];					
-					this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
-						inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
-						inst.optforcemindim, null, null, 
-						inst.optdisplaylayer);	
+						this.canvasctrllr.drawImage(this.images[inst.fname], inst.anchor[0], inst.anchor[1], 
+							inst.inscrspc, inst.pos, inst.optdims[0], inst.optdims[1], 
+							inst.optforcemindim, null, null, 
+							inst.optdisplaylayer);	
+					}
 				}
-			}
-		}		
+			}	
 		}	
 	};
 	this.setMarker = function(p_path, p_layername, p_oid, p_x, p_y, b_is_inscreenspace,  
@@ -271,14 +271,14 @@ function ImageMarkerManager(p_canvasctrllr) {
 			'optforcemindim': opt_forcemindim,
 			'optdisplaylayer': opt_displaylayer
 		};
-
+		
 		if (this.images[fname] === undefined) {
 			this.images[fname] = new Image(); 
 			this.images[fname].src = p_path;
 			(function(p_mrkmgr, p_fname, p_imageobj) {
 				p_imageobj.onload = function() {
 					p_mrkmgr.redrawMarkers(p_fname);
-					}
+				}
 			})(this, fname, this.images[fname]);
 		} else {
 			this.redrawMarkers(fname, key);
@@ -919,7 +919,7 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 	// 	 is_inscreenspace: object defined in screen space coordinates
 	//	 opt_displaylayer: optional -- null or service layer identifiers, usually 'transient' or 'temporary'
 	// 	 dolog: boolean flag -- log messages to console
-											
+
 	this.drawSimplePath = function(p_points, p_stroke, p_fill,  
 					p_markerfunc, is_inscreenspace,  
 					b_dolog, opt_oid, opt_featattrs, opt_displaylayer) 
@@ -1623,11 +1623,12 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 			}
 			positioningShifted(pos, pt[0], pt[1], dims, outxy);
 			try {
-			this._ctxdict[dlayer].drawImage(p_imageobj, outxy[0], outxy[1],  dims[0], dims[1]);
+				this._ctxdict[dlayer].drawImage(p_imageobj, outxy[0], outxy[1],  dims[0], dims[1]);
 			} catch(e) {
 				
 				if (e.name !== undefined && (e.name == 'NS_ERROR_NOT_AVAILABLE' || e.name == 'InvalidStateError')) {
 					console.warn(String.format("drawImage - image not found:{0}", p_imageobj.src));
+					return;
 				} else {
 					console.log("Invalid image, error name:"+e.name);
 					throw new Error(e);
@@ -1647,7 +1648,18 @@ function CanvasController(p_elemid, p_mapcontroller, opt_basezindex) {
 							p_imageobj.width, p_imageobj.height, true, opt_forcemindim, dims);
 					}
 					positioningShifted(p_pos, p_px, p_py, dims, outxy);
-					p_pctx.drawImage(p_img, outxy[0], outxy[1],  dims[0], dims[1]);
+					try {
+						p_pctx.drawImage(p_img, outxy[0], outxy[1],  dims[0], dims[1]);
+					} catch(e) {						
+						if (e.name !== undefined && (e.name == 'NS_ERROR_NOT_AVAILABLE' || e.name == 'InvalidStateError')) {
+							console.warn(String.format("drawImage async - image not found:{0}", p_imageobj.src));
+							return;
+						} else {
+							console.log("Invalid async image, error name:"+e.name);
+							throw new Error(e);
+						}
+					}
+						
 					if (p_opt_imgfilter_func) {
 						p_opt_imgfilter_func(p_pctx, p_img, outxy[0], outxy[1],  dims[0], dims[1], p_imgfilteradicdata);
 					}
