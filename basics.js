@@ -66,6 +66,16 @@ function bodyCanvasDims()
     return [x, y];
 }
 
+function getFullWidgetWidth(p_elem) {
+	var sty = getComputedStyle(p_elem);
+	return parseInt(sty.width) + parseInt(sty.paddingLeft) + parseInt(sty.paddingRight) + parseInt(sty.marginLeft) + parseInt(sty.marginRight);
+}
+
+function getPadding(p_elem) {
+	var sty = getComputedStyle(p_elem);
+	return [parseInt(sty.paddingTop) + parseInt(sty.paddingBottom), parseInt(sty.paddingLeft) + parseInt(sty.paddingRight)];
+}
+
 function changeSkin(skname) {
 	var prevskin = globalskin;
 	globalskin = skname;
@@ -98,8 +108,11 @@ function getClass(elem) {
 }
 
 function getClasses(p_node) {
-	var v_classes_str = getClass(p_node);
-	return v_classes_str.split(/[ ]+/);
+	var ret = null, v_classes_str = getClass(p_node);
+	if (v_classes_str) {
+		ret = v_classes_str.split(/[ ]+/);
+	}
+	return ret;
 }
 
 function hasClass(p_elem, p_classname) {

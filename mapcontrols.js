@@ -312,6 +312,7 @@ function mouseWheelController(p_controls_mgr) {
 					if (tdelta > p_self.refreshPeriodMsec) {
 						p_self.clearReference();	
 				p_self.controls_mgr.the_map.refresh(false);
+						p_self.controls_mgr.the_map.applyRegisteredsOnPanZoom();						
 					} else {
 						if (p_self.count > p_self.limitcount) {
 				p_self.clearReference();

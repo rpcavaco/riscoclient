@@ -650,14 +650,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		let deltascrx =  Math.abs(p_start_screen[0] - p_x);
 		let deltascry =  Math.abs(p_start_screen[1] - p_y);
 		if (deltascrx > 0 || deltascry > 0) {	
-					
 			this.refresh(false);	
-			
-			if (this.onPanZoom[muidx] !== undefined && this.onPanZoom[muidx] != null) {
-				this.onPanZoom[muidx]();
-				muidx++;
-			}
-			
+			this.applyRegisteredsOnPanZoom();			
 			ret = true;
 		}
 		
@@ -717,6 +711,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.redraw(false, true);
 		} else {
 			this.refresh(false);
+			this.applyRegisteredsOnPanZoom();		
 		}
 	};
 	this.changeCenter = function(p_centerx, p_centery)
@@ -918,7 +913,25 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 			this.maxscaleview = new maxScaleView(p_initconfig.maxscaleview.scale, p_initconfig.maxscaleview.terrain_center);
 		}
 		
-		let tc = getCookie("terrain_center");
+		let tc = getCookie("mapscale");
+		if (tc.length < 1) {
+			if (p_initconfig.terrain_center !== undefined)
+			{			
+				tc = p_initconfig["scale"];
+				scalev = parseFloat(tc);
+				
+			} else {	
+				throw new Error(this.msg("NOSCL"));			
+			}
+		} else {
+			if (isNaN(parseFloat(tc))) {
+				throw new Error(this.msg("INVSCL")+ ":" + tc);
+			}
+			scalev = parseFloat(tc);
+			this.setScale(scalev);
+		}
+				
+		tc = getCookie("terrain_center");
 		if (tc.length < 1) {
 			if (p_initconfig.terrain_center !== undefined)
 			{			
@@ -4041,6 +4054,14 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		this.onDrawing_FeatureTransform.push(p_func);
 	}
 
+	this.applyRegisteredsOnPanZoom = function()  {
+		let muidx = 0;
+		if (this.onPanZoom[muidx] !== undefined && this.onPanZoom[muidx] != null) {
+			this.onPanZoom[muidx]();
+			muidx++;
+		}
+	}
+	
 // TODO - parâmetros de sobreamento não podem ser aplicados ao ctx, tem de despoletar o desenho de
 // um segundo texto desviado 
 	// APPLY STYLE NO CANVAS, ISTO CHAMA ESSA NOVA FUNC
