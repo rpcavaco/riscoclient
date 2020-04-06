@@ -104,13 +104,13 @@ function Pan(mouseButtonMask, p_mapctrl)
 		return true;
 	};
 
-	this.mouseup = function(e, target, x, y) 
+	this.mouseup = function(e, target, x, y, opt_origin) 
 	{
 		if (this.started) 
 		{ 	
 			this.started = false;
 			
-			this.the_map.finishPan((x==0 ? this.last_pt[0] : x), (y==0 ? this.last_pt[1] : y), this.start_screen);		
+			this.the_map.finishPan((x==0 ? this.last_pt[0] : x), (y==0 ? this.last_pt[1] : y), this.start_screen, opt_origin);		
 			this.start_terrain = null;
 		}
 		
@@ -307,15 +307,15 @@ function mouseWheelController(p_controls_mgr) {
 					p_self.count = p_self.count + 1;
 					if (p_self.starttime == null) {
 						return;
-		}
+					}
 					let tdelta = Date.now() - p_self.starttime;
 					if (tdelta > p_self.refreshPeriodMsec) {
 						p_self.clearReference();	
-				p_self.controls_mgr.the_map.refresh(false);
+						p_self.controls_mgr.the_map.refresh(false);
 						p_self.controls_mgr.the_map.applyRegisteredsOnPanZoom();						
 					} else {
 						if (p_self.count > p_self.limitcount) {
-				p_self.clearReference();
+							p_self.clearReference();
 						}
 					}
 			}, p_self.waitPeriodMsec);
@@ -1085,7 +1085,7 @@ function MapControlsMgr(p_the_map) {
 		return false;
 	};
 	
-	this.mouseup = function(e, p_forcedcoords) {
+	this.mouseup = function(e, p_forcedcoords, opt_origin) {
 		
 		if (!e) var e = window.event;
 		let coords=[], target =  getTarget(e);
@@ -1106,7 +1106,7 @@ function MapControlsMgr(p_the_map) {
 		pt = this.permanenttool;
 		if (ret && pt && typeof pt.mouseup == 'function')
 		{
-			pt.mouseup(e, target, coords[0], coords[1]);
+			pt.mouseup(e, target, coords[0], coords[1], opt_origin);
 		}
 		
 		return false;

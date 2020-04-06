@@ -644,12 +644,20 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	};
 
 	// called by pan tool mouse up method - redraw only
-	this.finishPan = function(p_x, p_y, p_start_screen) {
+	this.finishPan = function(p_x, p_y, p_start_screen, opt_origin) {
 		
 		let muidx=0, ret = false;
+		let dx=0, dy=0;
 		let deltascrx =  Math.abs(p_start_screen[0] - p_x);
 		let deltascry =  Math.abs(p_start_screen[1] - p_y);
-		if (deltascrx > 0 || deltascry > 0) {	
+		
+		console.log("2:"+opt_origin);
+		
+		if (opt_origin == 'touch') {
+			dx = 6;
+			dy = 6;
+		}
+		if (deltascrx > dx || deltascry > dy) {					
 			this.refresh(false);	
 			this.applyRegisteredsOnPanZoom();			
 			ret = true;
@@ -710,7 +718,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (p_redrawonly) {
 			this.redraw(false, true);
 		} else {
-			this.refresh(false);
+			this.refresh(false);			
 			this.applyRegisteredsOnPanZoom();		
 		}
 	};
@@ -912,7 +920,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 		if (p_initconfig.maxscaleview) {
 			this.maxscaleview = new maxScaleView(p_initconfig.maxscaleview.scale, p_initconfig.maxscaleview.terrain_center);
 		}
-		
+
 		let tc = getCookie("mapscale");
 		if (tc.length < 1) {
 			if (p_initconfig.terrain_center !== undefined)
@@ -2986,7 +2994,6 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 						if (this.images[rnamed][rkey] !== undefined && this.images[rnamed][rkey] != null) 
 						{
 							imgelem = this.images[rnamed][rkey].elem;
-							//console.log("2874: "+rnamed+" "+rkey);
 							imgelem.onload = function() {};
 							imgelem.onerror = function() {};
 							if (!imgelem.complete) {
@@ -3134,8 +3141,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 								}
 							}
 						}
-					})(this)
-				));
+					})(this),
+				null, null, true));
 			} // for
 		}
 		else
@@ -3199,8 +3206,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 
 								}
 							}
-						})(this)
-					));
+						})(this),
+					null, null, true));
 			}
 		}
 	};
@@ -3464,8 +3471,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 							}
 						}
 					}
-				})(this)
-			));
+				})(this),
+			null, null, true));
 		}
 
 		// se há rasters pedir specs	
@@ -3546,8 +3553,8 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 									}
 								}
 							};
-						})(this)
-					));
+						})(this),
+					null, null, true));
 				}
 
 			}			
@@ -4053,7 +4060,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 	this.registerOnDrawing_FeatureTransform = function(p_func) {
 		this.onDrawing_FeatureTransform.push(p_func);
 	}
-
+	
 	this.applyRegisteredsOnPanZoom = function()  {
 		let muidx = 0;
 		if (this.onPanZoom[muidx] !== undefined && this.onPanZoom[muidx] != null) {
@@ -4502,7 +4509,7 @@ function MapController(p_elemid, po_initconfig, p_debug_callsequence) {
 					//console.log('touchend');
 					if (te) {
 						//console.log('touch end mouseup');
-						p_mapctrlsmgr.mouseup(te, p_mapctrlsmgr.touchController.zoomcenter);
+						p_mapctrlsmgr.mouseup(te, p_mapctrlsmgr.touchController.zoomcenter, 'touch');
 					}
 				}
 			})(this.mapctrlsmgr)					
